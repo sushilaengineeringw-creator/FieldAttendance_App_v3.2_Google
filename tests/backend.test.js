@@ -8,11 +8,11 @@ const { load } = require('./mock-google');
 const PHOTO = Buffer.from('fakejpegbytes').toString('base64');
 const GOOD = { lat: 18.5204, lng: 73.8567, accuracy: 12, loc_age_s: 3 };
 const STRONG = 'Admin#Pass1';
-let counter = 0;
+let counter = 0, mob = 0;
 
 function fresh() { const E = load(); E.x.setup(); return E; }
 function register(E, contact, name) {
-  const r = E.api({ action: 'register_start', company_name: name || 'Test Co ' + (++counter), admin_name: 'Asha Admin', mobile: '9876543210', email: contact, business_type: 'Service', employees: 10, address: 'Pune', admin_pin: STRONG });
+  const r = E.api({ action: 'register_start', company_name: name || 'Test Co ' + (++counter), admin_name: 'Asha Admin', mobile: '98765' + String(10000 + (++mob)), email: contact, business_type: 'Service', employees: 10, address: 'Pune', admin_pin: STRONG });
   assert.equal(r.ok, true, JSON.stringify(r));
   return { cid: r.company_id, email: contact };
 }
@@ -61,7 +61,7 @@ test('registration input validation (email is optional) and rate limit', () => {
   assert.equal(E.api({ ...base, company_name: '' }).error, 'BAD_REQUEST');
   assert.equal(E.api({ ...base, company_name: 'N'.repeat(81) }).error, 'BAD_REQUEST');
   assert.equal(E.api({ ...base, email: '' }).ok, true);
-  for (let i = 0; i < 24; i++) assert.equal(E.api({ ...base, company_name: 'Bulk ' + i }).ok, true);
+  for (let i = 0; i < 24; i++) assert.equal(E.api({ ...base, company_name: 'Bulk ' + i, mobile: '97000' + String(10000 + i) }).ok, true);
   assert.equal(E.api({ ...base, company_name: 'One too many' }).error, 'RATE_LIMIT');
 });
 test('values Sheets would auto-convert survive: all-digit admin salt with leading zeros, "=" names, phone numbers, ISO times', () => {
@@ -202,7 +202,8 @@ test('licence: owner suspend / expire / extend affects ONLY that company; employ
   assert.equal(E.api({ action: 'checkout', token: xa, ...GOOD, idem: 'l1o' }).error, 'LICENCE_SUSPENDED');
   assert.equal(empLogin(E, A.cid, 'E001', ea.pin).error, 'LICENCE_SUSPENDED');
   assert.equal(E.api({ action: 'emp_add', token: ta, name: 'New' }).error, 'LICENCE_SUSPENDED');
-  assert.equal(E.api({ action: 'att_list', token: ta }).ok, true);                                                   // records remain readable
+  assert.equal(E.api({ action: 'att_list', token: ta }).error, 'LICENCE_SUSPENDED');                                // records are kept, but lists / reports need an active plan
+  assert.equal(E.api({ action: 'dashboard', token: ta }).ok, true);                                                  // the admin can still open the dashboard and see why
   assert.equal(E.api({ action: 'checkin', token: xb, ...GOOD, idem: 'l2', photo: PHOTO }).ok, true);                 // other company unaffected
   E.api({ action: 'owner_update', token: o, company_id: A.cid, status: 'Active' }); delete E.cache['co_' + A.cid];
   assert.equal(E.api({ action: 'checkout', token: xa, ...GOOD, idem: 'l1o' }).ok, true);
@@ -234,6 +235,7 @@ test('speed design: daily actions read only recent rows; 700 old rows do not bre
 });
 test('10 employees check in one after another: 10 distinct rows, 10 photos, no cross-talk', () => {
   const { E, tok, cid } = setup2(); const toks = [];
+  E.api({ action: 'owner_activate', token: E.api({ action: 'owner_login', password: 'owner-pass-1' }).token, company_id: cid, plan: 'Starter', months: 1 });   // a trial allows only 5 users
   for (let i = 0; i < 8; i++) addEmp(E, tok, { name: 'Emp ' + i });
   const list = E.api({ action: 'emp_list', token: tok }).employees; assert.equal(list.length, 10);
   list.forEach(e => { const p = E.api({ action: 'emp_reset_pin', token: tok, id: e.id, pin: 'pin' + e.id }).pin; toks.push(empLogin(E, cid, e.id, p).token); });
@@ -290,4 +292,72 @@ test('account deletion: admin requests (password re-checked) -> company switched
   assert.equal(E.api({ action: 'owner_update', token: o, company_id: A.cid, status: 'Active' }).error, 'BAD_REQUEST');
   assert.equal(E.sheetsById[co_(E, B.cid)[9]] !== undefined, true); assert.equal(E.filesById[co_(E, B.cid)[20]].trashed, false);
   assert.ok(regRows(E).length >= 3); const audit = E.registry.ss.getSheetByName('Audit').g.map(r => r[3]); assert.ok(audit.includes('DELETE_REQUEST') && audit.includes('PURGE'));
+});
+
+// ---------------- v3.3: trial rules, plans, reports need an active plan ----------------
+const ownerTok = (E) => E.api({ action: 'owner_login', password: 'owner-pass-1' }).token;
+const regRaw = (E, over) => E.api(Object.assign({ action: 'register_start', company_name: 'Raw Co', admin_name: 'A', mobile: '9811111111', email: '', admin_pin: STRONG }, over));
+const dropCache = (E, cid) => { delete E.cache['co_' + cid]; };
+
+test('trial: 10 days, up to 5 users (employees + managers); the 6th is refused with a clear message', () => {
+  const E = fresh(), c = register(E, 'a@a.com', 'TrialCo'), tok = admin(E, c.cid), row = co_(E, c.cid);
+  assert.equal(row[12], 'Trial'); assert.equal(row[15], 5); assert.equal(row[14], E.x.addDays_(E.x.ymd_(new Date()), 10));
+  for (let i = 0; i < 5; i++) addEmp(E, tok, { name: 'P' + i });
+  const r = E.api({ action: 'emp_add', token: tok, name: 'Sixth' }); assert.equal(r.error, 'LIMIT_REACHED'); assert.match(r.message, /5 users/);
+});
+test('one free trial per mobile number: +91 / spaces / 0-prefix variants are the same number; failed (Pending) attempts do not count; deleted companies still count', () => {
+  const E = fresh();
+  assert.equal(regRaw(E, { company_name: 'First', mobile: '98765 43210' }).ok, true);
+  for (const m of ['9876543210', '+91 9876543210', '09876543210', '91-98765-43210']) { const r = regRaw(E, { company_name: 'Again', mobile: m }); assert.equal(r.error, 'MOBILE_USED', m); assert.match(r.message, /already registered/); }
+  assert.equal(regRaw(E, { company_name: 'Other number', mobile: '9876543211' }).ok, true);
+  // Drive down: Pending row is created, the retry with the SAME number must still work
+  E.store.failDrive = true; assert.equal(regRaw(E, { company_name: 'Flaky', mobile: '9822222222' }).error, 'SERVER_ERROR');
+  E.store.failDrive = false; assert.equal(regRaw(E, { company_name: 'Flaky', mobile: '9822222222' }).ok, true);
+  // delete the first company completely: the number stays used
+  const first = E.registry.ss.getSheetByName('Companies').g.find(r => r[1] === 'First'), cid = first[0], o = ownerTok(E);
+  const t = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: STRONG }).token;
+  assert.equal(E.api({ action: 'company_delete_request', token: t, pin: STRONG }).ok, true); dropCache(E, cid);
+  assert.equal(E.api({ action: 'owner_purge', token: o, company_id: cid, confirm: cid }).ok, true); dropCache(E, cid);
+  const purged = co_(E, cid); assert.equal(purged[12], 'Deleted'); assert.equal(purged[3], '');                       // mobile text is erased ...
+  assert.match(purged[21], /^[0-9a-f]{64}$/);                                                                        // ... only the one-way key stays
+  assert.equal(regRaw(E, { company_name: 'Comeback', mobile: '9876543210' }).error, 'MOBILE_USED');
+});
+test('reports, lists and photos need an active plan; the dashboard and company screen still open so the admin sees why', () => {
+  const E = fresh(), c = register(E, 'a@a.com', 'LockCo'), tok = admin(E, c.cid), o = ownerTok(E), e1 = addEmp(E, tok), x = empLogin(E, c.cid, 'E001', e1.pin).token;
+  E.api({ action: 'checkin', token: x, ...GOOD, idem: 'k1', photo: PHOTO }); E.api({ action: 'checkout', token: x, ...GOOD, idem: 'k1o' });
+  const month = E.x.ymd_(new Date()).slice(0, 7), pid = attRows(E, c.cid)[0][10].match(/\/d\/([^/]+)/)[1];
+  assert.equal(E.api({ action: 'report_month', token: tok, month }).ok, true); assert.equal(E.api({ action: 'att_list', token: tok }).ok, true); assert.equal(E.api({ action: 'photo', token: tok, photo_id: pid }).ok, true);
+  E.api({ action: 'owner_update', token: o, company_id: c.cid, expiry: '2020-01-01' }); dropCache(E, c.cid);           // trial has ended
+  for (const a of [{ action: 'report_month', month }, { action: 'att_list' }, { action: 'photo', photo_id: pid }]) { const r = E.api({ ...a, token: tok }); assert.equal(r.error, 'LICENCE_EXPIRED', a.action); assert.match(r.message, /free trial has ended/i); assert.equal(r.licence.valid, false); }
+  assert.equal(E.api({ action: 'dashboard', token: tok }).ok, true); assert.equal(E.api({ action: 'company_info', token: tok }).ok, true);
+  const act = E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Starter', months: 1 }); assert.equal(act.ok, true); dropCache(E, c.cid);
+  assert.equal(E.api({ action: 'report_month', token: tok, month }).ok, true);                                      // paid: reports work again
+});
+test('owner_activate: plan sets status, name, user limit and expiry in one go; renewals stack; bad input and wrong states are refused', () => {
+  const E = fresh(), c = register(E, 'a@a.com', 'PayCo'), o = ownerTok(E), today = E.x.ymd_(new Date());
+  const cat = E.api({ action: 'owner_list', token: o }).plans; assert.equal(cat.Starter.limit, 25); assert.equal(cat.Growth.price[6], 1600); assert.equal(cat.Business.price[12], 4800); assert.equal(cat.Enterprise.price[1], 2000);
+  let r = E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Growth', months: 6 }); dropCache(E, c.cid);
+  assert.equal(r.price, 1600); assert.equal(r.company.status, 'Active'); assert.equal(r.company.plan, 'Growth'); assert.equal(r.company.employee_limit, 50); assert.ok(r.company.expiry > E.x.addDays_(today, 170) && r.company.expiry < E.x.addDays_(today, 190), r.company.expiry);
+  const first = r.company.expiry;
+  r = E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Growth', months: 12 }); dropCache(E, c.cid);       // renewal while still active: months are added AFTER the current expiry
+  assert.ok(r.company.expiry > E.x.addDays_(first, 360)); assert.equal(r.price, 2880);
+  r = E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Enterprise', months: 1, limit: 250 }); assert.equal(r.company.employee_limit, 250); assert.equal(r.price, 2000);
+  for (const bad of [{ plan: 'Gold', months: 1 }, { plan: 'Starter', months: 2 }, { plan: 'constructor', months: 1 }, { plan: '__proto__', months: 1 }, { plan: 'Starter', months: 1, limit: 0 }]) assert.equal(E.api({ action: 'owner_activate', token: o, company_id: c.cid, ...bad }).error, 'BAD_REQUEST', JSON.stringify(bad));
+  assert.equal(E.api({ action: 'owner_activate', token: o, company_id: 'NOPE1', plan: 'Starter', months: 1 }).error, 'NO_COMPANY');
+  const t = admin(E, c.cid); assert.equal(E.api({ action: 'owner_activate', token: t, company_id: c.cid, plan: 'Starter', months: 1 }).error, 'FORBIDDEN');   // a company admin can NOT give itself a plan
+  E.api({ action: 'company_delete_request', token: t, pin: STRONG }); dropCache(E, c.cid); assert.equal(E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Starter', months: 1 }).error, 'BAD_REQUEST');
+});
+test('month arithmetic: 31 Jan + 1 month = 28/29 Feb, 12 months keeps the date, year rollover', () => {
+  const E = fresh(); const f = E.ctx.addMonths_ || E.x.addMonths_;
+  assert.ok(f, 'addMonths_ is exported to the test');
+  assert.equal(f('2027-01-31', 1), '2027-02-28'); assert.equal(f('2028-01-31', 1), '2028-02-29'); assert.equal(f('2026-11-12', 12), '2027-11-12'); assert.equal(f('2026-12-15', 1), '2027-01-15'); assert.equal(f('2026-08-31', 6), '2027-02-28');
+});
+test('a user cannot go over the plan limit by adding people as Inactive and switching them on later', () => {
+  const E = fresh(), c = register(E, 'a@a.com', 'SneakCo'), tok = admin(E, c.cid);
+  for (let i = 0; i < 5; i++) addEmp(E, tok, { name: 'P' + i });
+  E.api({ action: 'emp_update', token: tok, id: 'E001', status: 'Inactive' });                                      // frees one place
+  addEmp(E, tok, { name: 'Replacement' });                                                                         // the free place is used
+  const r = E.api({ action: 'emp_update', token: tok, id: 'E001', status: 'Active' }); assert.equal(r.error, 'LIMIT_REACHED');
+  E.api({ action: 'emp_update', token: tok, id: 'E002', status: 'Inactive' });                                      // switch one off, then the first may come back
+  assert.equal(E.api({ action: 'emp_update', token: tok, id: 'E001', status: 'Active' }).ok, true);
 });

@@ -13,10 +13,18 @@
  */
 var TZ = 'Asia/Kolkata';
 var PRODUCT = 'Field Attendance App';
-var LOW_ACCURACY_WARN_M = 100, MAX_PHOTO_B64 = 4000000, MAX_FAILS = 5, RECENT_ROWS = 600, SESSION_TTL = 21600, TRIAL_DAYS_DEFAULT = 14;
+var LOW_ACCURACY_WARN_M = 100, MAX_PHOTO_B64 = 4000000, MAX_FAILS = 5, RECENT_ROWS = 600, SESSION_TTL = 21600, TRIAL_DAYS_DEFAULT = 10, TRIAL_LIMIT = 5;
+// Paid plans. limit = most users (employees + managers). price = rupees for 1 / 6 / 12 months. Used by the Owner screen 'Activate plan'.
+var PLANS_ = {
+  Starter:    { limit: 25,  price: { 1: 150,  6: 800,   12: 1440 } },
+  Growth:     { limit: 50,  price: { 1: 299,  6: 1600,  12: 2880 } },
+  Business:   { limit: 100, price: { 1: 499,  6: 2700,  12: 4800 } },
+  Enterprise: { limit: 500, price: { 1: 2000, 6: 12000, 12: 24000 } }
+};
+var PLAN_MONTHS_ = [1, 6, 12];
 
 var CO_H = ['Company ID', 'Company Name', 'Admin Name', 'Mobile', 'Email', 'Business Type', 'Employees (expected)', 'Address', 'Google Account (unused)', 'Spreadsheet ID',
-  'Photos Folder ID', 'Reports Folder ID', 'Status', 'Plan', 'Expiry Date', 'Employee Limit', 'Created', 'Admin Salt', 'Admin Hash', 'Notes', 'Root Folder ID'];
+  'Photos Folder ID', 'Reports Folder ID', 'Status', 'Plan', 'Expiry Date', 'Employee Limit', 'Created', 'Admin Salt', 'Admin Hash', 'Notes', 'Root Folder ID', 'Mobile Key'];
 var EMP_H = ['Employee ID', 'Name', 'PIN Hash', 'PIN Salt', 'Role', 'Status', 'Expiry Date', 'Mobile', 'Designation', 'Department', 'Employee Type',
   'Manager ID', 'Site', 'Site Lat', 'Site Long', 'Radius (m)', 'Created', 'Updated', 'Notes'];
 var ATT_H = ['Ref', 'Date', 'Employee ID', 'Name', 'Site', 'IN Time', 'IN Lat', 'IN Long', 'IN Accuracy (m)', 'IN Map', 'Photo', 'IN Distance from site (m)', 'IN On site?',
@@ -36,6 +44,10 @@ function hm_(d) { return Utilities.formatDate(d, TZ, 'HH:mm'); }
 function mapLink_(lat, lng) { return 'https://www.google.com/maps?q=' + lat + ',' + lng; }
 function dayNum_(s) { var p = String(s).split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000; }
 function addDays_(ymd, n) { var d = new Date(dayNum_(ymd) * 86400000 + n * 86400000); return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2); }
+function addMonths_(ymd, n) {   // same day-of-month n months later (31 Jan + 1 month = 28/29 Feb)
+  var p = String(ymd).split('-'), y = +p[0], m = +p[1] - 1, d = +p[2], t = new Date(Date.UTC(y, m + n, 1)), last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  return t.getUTCFullYear() + '-' + ('0' + (t.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + Math.min(d, last)).slice(-2);
+}
 function round2_(x) { return Math.round(x * 100) / 100; }
 function str_(v) { return v === undefined || v === null ? '' : String(v).replace(/\s+/g, ' ').trim(); }
 function hex_(bytes) { var s = ''; for (var i = 0; i < bytes.length; i++) { var b = (bytes[i] + 256) % 256; s += (b < 16 ? '0' : '') + b.toString(16); } return s; }
@@ -83,6 +95,7 @@ function route_(req) {
     case 'company_delete_cancel': return companyDeleteCancel_(req);
     case 'owner_list': return ownerList_(req);
     case 'owner_update': return ownerUpdate_(req);
+    case 'owner_activate': return ownerActivate_(req);
     case 'owner_detail': return ownerDetail_(req);
     case 'owner_purge': return ownerPurge_(req);
     default: throw fail_('BAD_REQUEST', 'Unknown request.');
@@ -133,7 +146,7 @@ function reg_() { return SpreadsheetApp.openById(cfg_('REGISTRY_ID')); }
 function coFromRow_(r, rowNum) {
   return { rowNum: rowNum, id: str_(r[0]), name: str_(r[1]), adminName: str_(r[2]), mobile: str_(r[3]), email: str_(r[4]), btype: str_(r[5]), expected: r[6], address: str_(r[7]),
     google: str_(r[8]), sheetId: str_(r[9]), photosId: str_(r[10]), reportsId: str_(r[11]), status: str_(r[12]), plan: str_(r[13]), expiry: isDate_(r[14]) ? ymd_(r[14]) : str_(r[14]),
-    limit: parseInt(r[15], 10) || 0, created: str_(r[16]), salt: str_(r[17]), hash: str_(r[18]), notes: str_(r[19]), rootId: str_(r[20]) };
+    limit: parseInt(r[15], 10) || 0, created: str_(r[16]), salt: str_(r[17]), hash: str_(r[18]), notes: str_(r[19]), rootId: str_(r[20]), mobileKey: str_(r[21]) };
 }
 function loadCo_(cid) {
   cid = str_(cid).toUpperCase(); if (!cid) return null;
@@ -146,7 +159,7 @@ function loadCo_(cid) {
 function saveCo_(co) {
   var sh = reg_().getSheetByName('Companies');
   var r = [co.id, co.name, co.adminName, co.mobile, co.email, co.btype, co.expected, co.address, co.google, co.sheetId, co.photosId, co.reportsId, co.status, co.plan, co.expiry, co.limit,
-    co.created, co.salt, co.hash, co.notes, co.rootId];
+    co.created, co.salt, co.hash, co.notes, co.rootId, co.mobileKey || ''];
   if (!co.rowNum) co.rowNum = Math.max(sh.getLastRow(), 1) + 1;
   sh.getRange(co.rowNum, 1, 1, CO_H.length).setValues(cells_([r], CO_H.length));
   C_().remove('co_' + co.id);
@@ -154,15 +167,24 @@ function saveCo_(co) {
 function audit_(cid, actor, action, detail) {
   try { var sh = reg_().getSheetByName('Audit'), n = Math.max(sh.getLastRow(), 1) + 1; sh.getRange(n, 1, 1, 5).setValues(cells_([[new Date().toISOString(), cid, actor, action, str_(detail).slice(0, 300)]], 5)); } catch (e) {}
 }
+// One free trial per mobile number: the key is a hash of the last 10 digits, kept even after the company is deleted.
+function mobKey_(mobile) { var d = String(mobile || '').replace(/\D/g, ''); if (d.length > 10) d = d.slice(-10); return d ? sha_('mobile:' + d) : ''; }
+function mobKeyOf_(co) { return co.mobileKey || mobKey_(co.mobile); }
+function mobileUsed_(key) {   // true if a completed registration (any status, also Deleted) already used this number
+  var sh = reg_().getSheetByName('Companies'), n = sh.getLastRow(); if (n < 2 || !key) return false;
+  var v = sh.getRange(2, 1, n - 1, CO_H.length).getValues();
+  for (var i = 0; i < v.length; i++) { if (!str_(v[i][0])) continue; var c = coFromRow_(v[i], i + 2); if (c.status !== 'Pending' && mobKeyOf_(c) === key) return true; }
+  return false;
+}
 function coLicence_(co) {
   var today = ymd_(new Date()), st = co.status.toLowerCase(), exp = co.expiry || null, left = exp ? dayNum_(exp) - dayNum_(today) : null;
   var base = { state: st, expiry: exp, days_left: left, valid: false, plan: co.plan };
   if (st === 'pending') { base.message = 'Company registration is not complete.'; return base; }
   if (st === 'deletionrequested') { base.message = 'Deletion of this company\'s data has been requested. Attendance is switched off. The administrator can cancel the request before the data is deleted.'; return base; }
   if (st === 'deleted') { base.message = 'This company has been deleted.'; return base; }
-  if (st === 'suspended') { base.message = 'This company subscription is suspended. Contact your administrator.'; return base; }
+  if (st === 'suspended') { base.message = 'This company subscription is suspended. Attendance and reports are switched off. Contact your administrator.'; return base; }
   if (st !== 'trial' && st !== 'active') { base.message = 'This company subscription is not active.'; return base; }
-  if (exp && exp < today) { base.state = 'expired'; base.message = 'This company subscription has expired. Existing records are kept; attendance cannot be marked.'; return base; }
+  if (exp && exp < today) { base.state = 'expired'; base.message = (st === 'trial' ? 'The free trial has ended.' : 'The subscription has ended.') + ' Attendance and reports are switched off until a plan is active. Your records are kept.'; return base; }
   base.valid = true; base.message = (st === 'trial' ? 'Free trial' : 'Active') + (exp ? ' - ' + left + ' day' + (left === 1 ? '' : 's') + ' remaining (expires ' + exp + ')' : '');
   return base;
 }
@@ -177,6 +199,7 @@ function setup() {
     var c = ss.getSheets()[0]; c.setName('Companies'); c.getRange(1, 1, 1, CO_H.length).setValues([CO_H]);
     var a = ss.insertSheet('Audit'); a.getRange(1, 1, 1, 5).setValues([['Time', 'Company ID', 'Actor', 'Action', 'Detail']]);
   }
+  else { try { reg_().getSheetByName('Companies').getRange(1, 1, 1, CO_H.length).setValues([CO_H]); } catch (e) {} }   // adds the newest header cells to an older registry
   return 'Setup complete. Registry: ' + p.getProperty('REGISTRY_ID') + '. Now Deploy > New deployment > Web app (Execute as: Me, Access: Anyone) and paste its /exec URL into the app build.';
 }
 
@@ -191,10 +214,11 @@ function registerStart_(req) {
   if (!/^[0-9+ -]{8,15}$/.test(f.mobile)) throw fail_('BAD_REQUEST', 'Enter a valid mobile number.');
   if (f.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) throw fail_('BAD_REQUEST', 'Enter a valid email address or leave it empty.');
   if (!validPin_(req.admin_pin, 6)) throw fail_('BAD_REQUEST', 'Administrator password must be 6-20 letters/numbers.');
+  var mkey = mobKey_(f.mobile); if (mobileUsed_(mkey)) throw fail_('MOBILE_USED', 'A company is already registered with this mobile number, so a new free trial is not available. Sign in with your Company ID, or contact the app provider.');
   var cid; for (var t = 0; t < 10; t++) { cid = 'FA' + rnd_(5, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'); if (!loadCo_(cid)) break; }
   var salt = rnd_(16, 'abcdef0123456789');
   var co = { id: cid, name: f.name, adminName: f.adminName, mobile: f.mobile, email: f.email, btype: f.btype, expected: f.expected, address: f.address, google: '', sheetId: '', photosId: '', reportsId: '', status: 'Pending',
-    plan: 'Trial', expiry: '', limit: 25, created: new Date().toISOString(), salt: salt, hash: sha_(salt + ':' + req.admin_pin), notes: '', rootId: '' };
+    plan: 'Trial', expiry: '', limit: TRIAL_LIMIT, created: new Date().toISOString(), salt: salt, hash: sha_(salt + ':' + req.admin_pin), notes: '', rootId: '', mobileKey: mkey };
   saveCo_(co);
   try { createResources_(co); }
   catch (e) { console.error(e && e.stack || e); co.notes = 'Setup failed: ' + String(e.message || e).slice(0, 150); saveCo_(co); throw fail_('SERVER_ERROR', 'Could not create the company sheet. Please try again in a minute.'); }
@@ -414,7 +438,7 @@ function dashboard_(req) {
     logged_in_now: open, completed_checkouts: done, missed_checkouts: missed, month_attendance_days: Object.keys(monthDays).length, licence: coLicence_(x.co) };
 }
 function attList_(req) {
-  var x = ctx_(req, ['ADMIN', 'MANAGER']), today = ymd_(new Date()), from = str_(req.from) || today, to = str_(req.to) || from;
+  var x = ctx_(req, ['ADMIN', 'MANAGER']); needLicence_(x.co); var  today = ymd_(new Date()), from = str_(req.from) || today, to = str_(req.to) || from;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw fail_('BAD_REQUEST', 'Dates must be YYYY-MM-DD.');
   var emps = scopeEmps_(x), ids = byId_(emps), f = { emp: str_(req.emp).toUpperCase(), dept: str_(req.dept), des: str_(req.designation), mgr: str_(req.manager).toUpperCase(), site: str_(req.site) };
   var rows = rowsFrom_(x.co, from).filter(function (r) {
@@ -426,7 +450,7 @@ function attList_(req) {
 }
 // Photos are private in the admin's Drive; the app shows them only through this authorised call.
 function photo_(req) {
-  var x = ctx_(req, ['ADMIN', 'MANAGER']), id = str_(req.photo_id); if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) throw fail_('BAD_REQUEST', 'Bad photo.');
+  var x = ctx_(req, ['ADMIN', 'MANAGER']); needLicence_(x.co); var  id = str_(req.photo_id); if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) throw fail_('BAD_REQUEST', 'Bad photo.');
   var f, ok = false; try { f = DriveApp.getFileById(id); var ps = f.getParents(); while (ps.hasNext()) if (ps.next().getId() === x.co.photosId) ok = true; } catch (e) { ok = false; }
   if (!ok) throw fail_('FORBIDDEN', 'You do not have access to this photo.');
   var eid = String(f.getName() || '').split('_')[1] || '';
@@ -437,7 +461,7 @@ function photo_(req) {
 // ---------------- monthly reports (data; the app builds the Excel file) ----------------
 var MONTHS_ = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 function reportMonth_(req) {
-  var x = ctx_(req, ['ADMIN', 'MANAGER']), m = /^(\d{4})-(\d{2})$/.exec(str_(req.month) || ymd_(new Date()).slice(0, 7)); if (!m || +m[2] < 1 || +m[2] > 12) throw fail_('BAD_REQUEST', 'Month must be YYYY-MM.');
+  var x = ctx_(req, ['ADMIN', 'MANAGER']); needLicence_(x.co); var  m = /^(\d{4})-(\d{2})$/.exec(str_(req.month) || ymd_(new Date()).slice(0, 7)); if (!m || +m[2] < 1 || +m[2] > 12) throw fail_('BAD_REQUEST', 'Month must be YYYY-MM.');
   var year = +m[1], month = +m[2], days = new Date(Date.UTC(year, month, 0)).getUTCDate(), ym = m[0], today = ymd_(new Date());
   var f = { emp: str_(req.emp).toUpperCase(), dept: str_(req.dept), mgr: str_(req.manager).toUpperCase() };
   var emps = scopeEmps_(x).filter(function (e) { return e.role.toLowerCase() !== 'manager' && (!f.emp || e.id.toUpperCase() === f.emp) && (!f.dept || e.department === f.dept) && (!f.mgr || e.manager === f.mgr); });
@@ -515,7 +539,12 @@ function empUpdate_(req) {
   var lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
     var all = readEmps_(co), id = str_(req.id).toUpperCase(), e = all.filter(function (z) { return z.id.toUpperCase() === id; })[0]; if (!e) throw fail_('NOT_FOUND', 'Employee not found.');
+    var wasOff = ['inactive', 'revoked'].indexOf(e.status.toLowerCase()) >= 0;
     fieldsFrom_(req, e, all); e.updated = new Date().toISOString();
+    if (wasOff && ['inactive', 'revoked'].indexOf(e.status.toLowerCase()) < 0 && co.limit) {
+      var others = all.filter(function (z) { return z.id !== e.id && ['inactive', 'revoked'].indexOf(z.status.toLowerCase()) < 0; }).length;
+      if (others >= co.limit) throw fail_('LIMIT_REACHED', 'Your plan allows ' + co.limit + ' users. Switch someone else off first, or choose a bigger plan.');
+    }
     wr_(co, 'Employees!A' + e.row + ':S' + e.row, [empRow_(e)]); C_().remove('er_' + co.id + '_' + e.id.toUpperCase()); audit_(co.id, 'ADMIN', 'EMP_UPDATE', e.id + ' ' + (req.status || ''));
     return { employee: empPublic_(e) };
   } finally { lock.releaseLock(); }
@@ -556,7 +585,7 @@ function ownerPurge_(req) {
   ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');
   if (str_(req.confirm).toUpperCase() !== co.id) throw fail_('BAD_REQUEST', 'Type the Company ID to confirm.');
   [co.rootId, co.sheetId].forEach(function (id) { if (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { try { DriveApp.getFolderById(id).setTrashed(true); } catch (e2) {} } } });
-  var n = co.name; co.status = 'Deleted'; co.sheetId = co.photosId = co.reportsId = co.rootId = ''; co.salt = co.hash = ''; co.adminName = co.mobile = co.email = co.address = ''; co.notes = 'Data deleted ' + ymd_(new Date());
+  var n = co.name; co.mobileKey = mobKeyOf_(co); co.status = 'Deleted'; co.sheetId = co.photosId = co.reportsId = co.rootId = ''; co.salt = co.hash = ''; co.adminName = co.mobile = co.email = co.address = ''; co.notes = 'Data deleted ' + ymd_(new Date());
   saveCo_(co); audit_(co.id, 'OWNER', 'PURGE', n);
   return { company: coPublic_(co) };
 }
@@ -575,7 +604,7 @@ function coPublic_(co) {
 function ownerList_(req) {
   ctx_(req, ['OWNER']); var sh = reg_().getSheetByName('Companies'), n = sh.getLastRow(), out = [];
   if (n >= 2) { var v = sh.getRange(2, 1, n - 1, CO_H.length).getValues(); for (var i = 0; i < v.length; i++) { if (!str_(v[i][0])) continue; out.push(coPublic_(coFromRow_(v[i], i + 2))); } }
-  return { companies: out };
+  return { companies: out, plans: PLANS_ };
 }
 function ownerUpdate_(req) {
   ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');
@@ -591,6 +620,18 @@ function ownerUpdate_(req) {
   if (req.notes !== undefined) co.notes = str_(req.notes).slice(0, 200);
   saveCo_(co); audit_(co.id, 'OWNER', 'OWNER_UPDATE', JSON.stringify({ s: req.status, p: req.plan, l: req.limit, e: req.expiry, x: req.extend_days }));
   return { company: coPublic_(co) };
+}
+// One click: plan + months -> Active, plan name, user limit and expiry are all set together. Renewing an active company adds the months after its current expiry.
+function ownerActivate_(req) {
+  ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');
+  if (['Pending', 'Deleted', 'DeletionRequested'].indexOf(co.status) >= 0) throw fail_('BAD_REQUEST', 'This company cannot be activated (status: ' + co.status + ').');
+  var name = str_(req.plan), plan = PLANS_.hasOwnProperty(name) ? PLANS_[name] : null, months = parseInt(req.months, 10);
+  if (!plan) throw fail_('BAD_REQUEST', 'Unknown plan.'); if (PLAN_MONTHS_.indexOf(months) < 0) throw fail_('BAD_REQUEST', 'Months must be 1, 6 or 12.');
+  var lim = plan.limit; if (req.limit !== undefined && req.limit !== '') { lim = parseInt(req.limit, 10); if (!(lim >= 1 && lim <= 100000)) throw fail_('BAD_REQUEST', 'Employee limit must be 1-100000.'); }
+  var today = ymd_(new Date()), base = co.status === 'Active' && co.expiry && co.expiry > today ? co.expiry : today;
+  co.status = 'Active'; co.plan = name; co.limit = lim; co.expiry = addMonths_(base, months);
+  saveCo_(co); audit_(co.id, 'OWNER', 'ACTIVATE', name + ' ' + months + 'm Rs' + plan.price[months] + ' until ' + co.expiry);
+  return { company: coPublic_(co), price: plan.price[months] };
 }
 function ownerDetail_(req) {
   ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');

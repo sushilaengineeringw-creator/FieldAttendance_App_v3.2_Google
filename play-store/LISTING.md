@@ -32,7 +32,7 @@ PRIVACY AND CONTROL
 - Each company's data is kept separate
 - Company administrators can delete the company account and all its data from inside the app
 
-Free trial for new companies; ongoing use is subject to a company subscription (see the Terms of Use).
+10-day free trial for up to 5 staff; ongoing use is subject to a company subscription (see the Terms of Use).
 Note: employees need the Company ID from their employer to sign in.
 ```
 **What's new (first release):** `First release.`

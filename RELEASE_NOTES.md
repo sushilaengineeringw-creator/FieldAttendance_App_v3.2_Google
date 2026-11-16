@@ -1,3 +1,12 @@
+## 3.3.0 - self-service selling
+- Free trial is now 10 days and limited to 5 staff (managers count).
+- One free trial per mobile number: a hashed "Mobile Key" is kept in the registry even after a company is deleted. Registering again with the same number is refused.
+- Reports (Excel), attendance lists and photos need an active plan; the app shows a clear "choose a plan" message instead.
+- Plan catalogue: Starter 25 / Growth 50 / Business 100 / Enterprise (500) staff, for 1, 6 or 12 months. Owner screen: "Activate a paid plan" sets status, limit and expiry in one step (extends from the current expiry if still running).
+- Fix: switching an Inactive/Revoked user back on now respects the plan's staff limit.
+- Optional in-app "Choose a plan and pay" button, shown only when the repository variable PAY_URL is set and never in the Play (AAB) build.
+- Tests: 45 pass.
+
 ## 3.2.0 - Google Play ready
 - Build upgraded to Capacitor 8: targets Android 16 (API 36), required by Google Play for new apps and updates since 31 Aug 2026. Workflow now uses Java 21. Android cloud backup is switched off (the PIN lives in local storage).
 - Account deletion (Play requirement): the company administrator can request deletion in the Company tab (password re-checked); attendance switches off at once, can be cancelled, and the owner permanently deletes the sheet + folders from the Owner screen. Public page `docs/delete-account.html`.

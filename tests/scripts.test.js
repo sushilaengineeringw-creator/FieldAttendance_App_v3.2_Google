@@ -53,3 +53,12 @@ test('Play Store pack is complete: graphics have the right sizes, listing text w
   const L = fs.readFileSync(path.join(ROOT, 'play-store/LISTING.md'), 'utf8'), name = /App name \(max 30\):\*\* `([^`]+)`/.exec(L)[1], short = /Short description \(max 80\):\*\*\n`([^`]+)`/.exec(L)[1], full = /Full description \(max 4000\):\*\*\n```\n([\s\S]*?)```/.exec(L)[1];
   assert.ok(name.length <= 30, name.length); assert.ok(short.length <= 80, short.length); assert.ok(full.length <= 4000 && full.length > 800, full.length);
 });
+
+test('PAY_URL: written to config.js, kept between runs, validated, and always EMPTY for the Play Store (aab) run', () => {
+  const d = sandbox(), cfg = () => fs.readFileSync(path.join(d, 'www/config.js'), 'utf8');
+  assert.equal(run(d, 'set-server-url.js', ['https://script.google.com/macros/s/ABC/exec'], { PAY_URL: 'https://x.github.io/app/' }).status, 0); assert.match(cfg(), /"PAY_URL":"https:\/\/x\.github\.io\/app\/"/);
+  run(d, 'set-server-url.js', ['https://script.google.com/macros/s/ABC/exec']); assert.match(cfg(), /"PAY_URL":"https:\/\/x\.github\.io/);               // kept
+  assert.notEqual(run(d, 'set-server-url.js', ['https://script.google.com/macros/s/ABC/exec'], { PAY_URL: 'javascript:alert(1)' }).status, 0);
+  const r = run(d, 'set-server-url.js', ['https://script.google.com/macros/s/ABC/exec'], { PAY_URL: 'https://x.github.io/app/', PLAY_BUILD: 'true' }); assert.equal(r.status, 0); assert.match(cfg(), /"PAY_URL":""/); assert.match(r.stdout, /no plans link/);
+  const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/build-apk.yml'), 'utf8'); assert.match(wf, /PAY_URL: \$\{\{ vars\.PAY_URL \}\}/); assert.match(wf, /PLAY_BUILD: \$\{\{ github\.event\.inputs\.build_aab \}\}/);
+});

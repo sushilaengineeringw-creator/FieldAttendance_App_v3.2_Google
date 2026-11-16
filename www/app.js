@@ -9,7 +9,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal(e.reason && e.rea
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
 const serverUrl = () => (store.get('server_url') || window.APP_CONFIG.SERVER_URL).trim();
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const cfgUrl = (k) => { const v = String((window.APP_CONFIG && window.APP_CONFIG[k]) || '').trim(); return /^https:\/\//.test(v) ? v : ''; };
 const cap = window.Capacitor;
 const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
@@ -64,6 +64,12 @@ function stopTimers() { clearInterval(S.timer); clearInterval(S.poll); }
 function openUrl(url) { const B = plugin('Browser'); if (B) return B.open({ url }); window.open(url, '_blank'); }
 function legalLinks() { const a = [['Privacy Policy', cfgUrl('PRIVACY_URL')], ['Terms of Use', cfgUrl('TERMS_URL')]].filter(x => x[1]); return a.length ? `<div class="small" style="text-align:center;margin-top:10px">${a.map(x => `<a href="#" data-u="${esc(x[1])}">${x[0]}</a>`).join(' · ')}</div>` : ''; }
 function bindLegal() { $app.querySelectorAll('a[data-u]').forEach(a => { a.onclick = (e) => { e.preventDefault(); openUrl(a.dataset.u); }; }); }
+// Link to the provider's plans page. Set PAY_URL in config.js (repository variable PAY_URL). Left empty in Play Store builds: no payment link is shown at all.
+const payUrl = (cid) => { const b = cfgUrl('PAY_URL'); if (!b) return ''; try { const u = new URL(b); if (cid) u.searchParams.set('cid', cid); u.hash = 'plans'; return u.toString(); } catch { return b; } };
+const payButton = (id) => payUrl() ? `<button id="${id || 'pay'}">Choose a plan and pay</button>` : '';
+function bindPay(root, id) { const b = (root || $app).querySelector('#' + (id || 'pay')); if (b) b.onclick = () => openUrl(payUrl(S.company && S.company.id)); }
+const isLicence = (e) => /^LICENCE_/.test((e && e.code) || '');
+function licenceBlock(e) { return `<div class="card"><div class="banner bad">${esc(e.message)}</div>${S.role === 'ADMIN' ? payButton() : '<div class="small">Please ask your company administrator.</div>'}</div>`; }
 function setHeader(who) { g('who').textContent = who || ''; }
 function busy(btn, text, fn) { const old = btn.textContent; btn.disabled = true; btn.textContent = text; return Promise.resolve().then(fn).finally(() => { if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = old; } }); }
 function toast(m, bad) { alert((bad ? '' : '') + m); }
@@ -92,7 +98,7 @@ function showLogin(msg) {
   };
 }
 function showRegister(msg) {
-  $app.innerHTML = `<div class="card"><h2 style="margin:0 0 4px">Register your company</h2><div class="small">Free trial. No Google account needed. Fill in the details and you can start in a minute.</div>
+  $app.innerHTML = `<div class="card"><h2 style="margin:0 0 4px">Register your company</h2><div class="small">Free 10-day trial for up to 5 staff. No Google account needed. Fill in the details and you can start in a minute.</div>
     ${typeof msg === 'string' && msg ? `<div class="banner bad" style="margin-top:12px">${esc(msg)}</div>` : ''}
     <label>Company name</label><input id="r_co"><label>Administrator name</label><input id="r_nm"><label>Mobile number</label><input id="r_mb" inputmode="tel">
     <label>Email address <span class="small">(optional)</span></label><input id="r_em" type="email"><label>Administrator password (6-20 letters/numbers)</label><input id="r_pw" type="password" autocomplete="new-password">
@@ -319,7 +325,7 @@ function showTab(id) {
   $nav.innerHTML = '<nav>' + TABS.map(([k, ic, nm]) => `<button data-t="${k}" class="${k === id ? 'on' : ''}"><i>${ic}</i>${nm}</button>`).join('') + '</nav>';
   $nav.querySelectorAll('button').forEach(b => { b.onclick = () => showTab(b.dataset.t); });
   $app.innerHTML = '<div class="small" style="text-align:center;padding:30px">Loading…</div>';
-  ({ dash: renderDash, emps: renderEmps, loc: renderLoc, rep: renderRep, co: renderCo })[id]().catch((e) => { if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button id="rt">Retry</button>`; if (g('rt')) g('rt').onclick = () => showTab(id); });
+  ({ dash: renderDash, emps: renderEmps, loc: renderLoc, rep: renderRep, co: renderCo })[id]().catch((e) => { if (isLicence(e)) { $app.innerHTML = licenceBlock(e); bindPay(); return; } if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button id="rt">Retry</button>`; if (g('rt')) g('rt').onclick = () => showTab(id); });
 }
 async function renderDash() {
   const d = await call('dashboard'), l = d.licence;
@@ -328,8 +334,8 @@ async function renderDash() {
     ${l.valid ? '' : `<div class="banner bad">${esc(l.message)}</div>`}${l.valid && l.days_left !== null && l.days_left <= 7 ? `<div class="banner warn">${esc(l.message)}</div>` : ''}
     <div class="grid">${st(d.total_employees, 'Total employees')}${st(d.active_employees, 'Active employees')}${st(d.present_today, "Today's present")}${st(d.absent_today, "Today's absent")}
     ${st(d.logged_in_now, 'Currently logged in')}${st(d.completed_checkouts, 'Completed check-outs')}${st(d.missed_checkouts, 'Missed check-outs (earlier days)')}${st(d.month_attendance_days, 'Attendance days this month')}</div>
-    <button class="ghost" id="rf">Refresh</button>`;
-  g('rf').onclick = () => showTab('dash');
+    ${S.role === 'ADMIN' && (!l.valid || l.state === 'trial' || (l.days_left !== null && l.days_left <= 7)) ? payButton() : ''}<button class="ghost" id="rf">Refresh</button>`;
+  g('rf').onclick = () => showTab('dash'); bindPay();
 }
 
 // ---------- employees ----------
@@ -391,16 +397,17 @@ async function renderLoc() {
         <div class="row"><span>Site</span><span>${esc(x.site || '—')}${x.in_dist !== null && x.in_dist !== '' ? ' · ' + x.in_dist + ' m' : ''} · ${esc(x.in_on || '')}</span></div>
         ${x.photo_id ? `<button class="sm ghost" data-p="${i}">View login photo</button>` : ''}</div>`).join('');
       g('lres').querySelectorAll('[data-p]').forEach(b => { b.onclick = () => showPhoto(S.locRows[+b.dataset.p], b); });
-    } catch (e) { g('lres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+    } catch (e) { g('lres').innerHTML = isLicence(e) ? licenceBlock(e) : `<div class="banner bad">${esc(e.message)}</div>`; bindPay(g('lres')); }
   });
   g('l_go').onclick = run; run();
 }
 async function showPhoto(row, btn) {
   await busy(btn, 'Loading…', async () => {
     try { const r = await call('photo', { photo_id: row.photo_id }); const m = modal(`<b>${esc(row.name)}</b> <span class="small">${fmtDate(row.date)} ${esc(row.in_time)}</span><img class="thumb" src="${r.image}"><button id="pc">Close</button>`); m.querySelector('#pc').onclick = () => m.close(); }
-    catch (e) { toast(e.message); }
+    catch (e) { if (isLicence(e)) planModal(e); else toast(e.message); }
   });
 }
+function planModal(e) { const m = modal(licenceBlock(e) + '<button class="ghost" id="pmc">Close</button>'); bindPay(m); m.querySelector('#pmc').onclick = () => m.close(); }
 
 // ---------- reports / Excel ----------
 async function saveWorkbook(wb, name) {
@@ -417,10 +424,11 @@ async function makeReport(kind, filter, label, btn) {
       if (!rep.employees.length) return toast('No employees match this selection.');
       const wb = FA_Excel.build(XLSX, rep, kind), safe = String(S.company.name).replace(/[^A-Za-z0-9]+/g, '_').slice(0, 24);
       await saveWorkbook(wb, `${label}_${rep.month}_${safe}.xlsx`);
-    } catch (e) { toast(e.message); }
+    } catch (e) { if (isLicence(e)) planModal(e); else toast(e.message); }
   });
 }
 async function renderRep() {
+  const ci = await call('company_info'); if (!ci.licence.valid) { $app.innerHTML = licenceBlock({ message: ci.licence.message }); bindPay(); return; }   // reports need an active plan: say so up front
   if (!S.emps) { const r = await call('emp_list'); S.emps = r.employees; S.types = r.types; S.statuses = r.statuses; }
   const depts = [...new Set(S.emps.map(e => e.department).filter(Boolean))].sort(), now = todayIST().slice(0, 7);
   $app.innerHTML = `<div class="card"><b>Monthly reports (Excel)</b><div class="small">Sundays are yellow. P = present, L = leave, WO = weekly off, MC = logout missing.</div>
@@ -442,11 +450,11 @@ async function renderCo() {
     </div>
   ${admin ? `<div class="card"><b>Subscription</b><div class="row"><span>Plan</span><span>${esc(c.plan)}</span></div><div class="row"><span>Status</span><span class="chip ${esc(l.state[0].toUpperCase() + l.state.slice(1))}">${esc(l.state)}</span></div>
     <div class="row"><span>Expiry date</span><span>${esc(c.expiry || '—')}</span></div><div class="row"><span>Days left</span><span>${l.days_left ?? '—'}</span></div><div class="row"><span>User limit</span><span>${c.employee_limit}</span></div>
-    <div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message)}</div></div>
+    <div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message)}</div>${payButton()}</div>
     ` : ''}
   ${admin ? (c.status === 'DeletionRequested' ? `<button class="ghost" id="dc">Cancel deletion request</button>` : `<button class="ghost" id="dr" style="color:var(--red)">Delete company account and data</button>`) : ''}
   <button class="ghost" id="so">Sign out</button>${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
-  g('so').onclick = signOut; bindLegal();
+  g('so').onclick = signOut; bindLegal(); bindPay();
   if (admin && g('dr')) g('dr').onclick = deleteCompanyDialog;
   if (admin && g('dc')) g('dc').onclick = (ev) => busy(ev.target, 'Please wait…', async () => { try { await call('company_delete_cancel'); renderCo(); } catch (e) { toast(e.message); } });
 }
@@ -472,19 +480,30 @@ function showOwnerLogin(msg) {
 async function showOwner() {
   $app.className = ''; setHeader('Owner'); $nav.innerHTML = '';
   try {
-    const { companies } = await call('owner_list'); S.cos = companies;
+    const { companies, plans } = await call('owner_list'); S.cos = companies; S.plans = plans || {};
     $app.innerHTML = `<div class="card"><b>Companies</b> <span class="small">(${companies.length})</span><button class="ghost" id="rf">Refresh</button></div>` + companies.map(c => `<div class="card" data-c="${esc(c.id)}" style="cursor:pointer"><b>${esc(c.name)}</b><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
       <div class="small">${esc(c.id)} · ${esc(c.plan)} · expires ${esc(c.expiry || '—')} (${c.days_left ?? '—'} d) · limit ${c.employee_limit}</div><div class="small">${esc(c.admin_name)} · ${esc(c.mobile)} · ${esc(c.email)}</div></div>`).join('') + `<button class="ghost" id="ols">Sign out</button>`;
     g('rf').onclick = showOwner; g('ols').onclick = signOut; $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
   } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="ols">Sign out</button>`; g('ols').onclick = signOut; }
 }
 function ownerForm(c) {
+  const plans = S.plans || {}, inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
   const m = modal(`<h3 style="margin:0">${esc(c.name)} <span class="small">${esc(c.id)}</span></h3><div id="mres"></div><div id="od" class="small" style="margin-top:8px">Loading usage…</div>
-    <label>Status</label><select id="o_st">${['Trial', 'Active', 'Suspended', 'Expired'].concat(['DeletionRequested', 'Deleted'].filter(x => x === c.status)).map(s => `<option ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+    <div class="card" style="margin:12px 0"><b>Activate a paid plan</b><div class="small">After the payment arrives. Sets Active, the plan, the user limit and the expiry in one step. Renewing adds the months after the current expiry.</div>
+    <label>Plan</label><select id="a_pl">${Object.keys(plans).map(k => `<option value="${esc(k)}">${esc(k)} - up to ${plans[k].limit} users</option>`).join('')}</select>
+    <label>Period</label><select id="a_mo"><option value="1">1 month</option><option value="6">6 months</option><option value="12">12 months</option></select>
+    <div id="a_pr" class="small" style="margin:8px 0"></div><button id="a_go">Activate plan</button></div>
+    <b>Manual changes</b><label>Status</label><select id="o_st">${['Trial', 'Active', 'Suspended', 'Expired'].concat(['DeletionRequested', 'Deleted'].filter(x => x === c.status)).map(s => `<option ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
     <label>Plan</label><input id="o_pl" value="${esc(c.plan)}" placeholder="Trial / Monthly / Annual / Per-employee"><label>Expiry date</label><input id="o_ex" type="date" value="${esc(c.expiry)}">
     <label>Employee limit</label><input id="o_lm" inputmode="numeric" value="${esc(c.employee_limit)}"><label>Extend by (days)</label><input id="o_xd" inputmode="numeric" placeholder="e.g. 30 or 365">
     <button id="os">Save</button>${c.status === 'DeletionRequested' ? '<button class="red" id="opg">Delete data permanently</button>' : ''}<button class="ghost" id="oc">Close</button>`);
   call('owner_detail', { company_id: c.id }).then(d => { m.querySelector('#od').textContent = `Users: ${d.users} · Last attendance: ${d.last_attendance_date || '—'}${d.storage_error ? ' · Storage problem: ' + d.storage_error : ''}`; }).catch(() => {});
+  const upd = () => { const p = plans[m.querySelector('#a_pl').value]; m.querySelector('#a_pr').textContent = p ? 'Amount to collect: ' + inr(p.price[m.querySelector('#a_mo').value]) + ' · user limit ' + p.limit : ''; };
+  m.querySelector('#a_pl').onchange = upd; m.querySelector('#a_mo').onchange = upd; upd();
+  m.querySelector('#a_go').onclick = (ev) => busy(ev.target, 'Activating…', async () => {
+    try { const r = await call('owner_activate', { company_id: c.id, plan: m.querySelector('#a_pl').value, months: m.querySelector('#a_mo').value }); m.close(); toast(`${c.name}: ${r.company.plan} plan active until ${fmtDate(r.company.expiry)}. Amount ${inr(r.price)}.`); showOwner(); }
+    catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+  });
   m.querySelector('#oc').onclick = () => m.close();
   if (m.querySelector('#opg')) m.querySelector('#opg').onclick = (ev) => { const t = prompt('This permanently deletes the company sheet, photos and reports. Type the Company ID ' + c.id + ' to confirm:'); if (!t) return; busy(ev.target, 'Deleting…', async () => { try { await call('owner_purge', { company_id: c.id, confirm: t }); m.close(); showOwner(); } catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; } }); };
   m.querySelector('#os').onclick = (ev) => busy(ev.target, 'Saving…', async () => {

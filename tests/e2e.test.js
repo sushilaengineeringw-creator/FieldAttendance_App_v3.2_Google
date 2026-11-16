@@ -17,7 +17,7 @@ async function until(fn, what, ms = 4000) { const t0 = Date.now(); for (;;) { tr
 function phone(E, opts = {}) {
   const dom = new JSDOM('<!doctype html><html><head></head><body><header><b id="hdr"></b><span id="who"></span></header><main id="app"></main><div id="nav"></div></body></html>', { url: 'https://localhost/', runScripts: 'dangerously', pretendToBeVisual: true });
   globalThis.__dom = dom; const w = dom.window, d = w.document, calls = { opened: [], files: [], shared: [], alerts: [] };
-  w.APP_CONFIG = { SERVER_URL: 'https://script.google.com/macros/s/TEST/exec' };
+  w.APP_CONFIG = Object.assign({ SERVER_URL: 'https://script.google.com/macros/s/TEST/exec' }, opts.cfg || {});
   w.fetch = async (url, o) => ({ json: async () => E.api(JSON.parse(o.body)) });
   w.alert = (m) => calls.alerts.push(m); w.confirm = () => true; w.XLSX = XLSX;
   const plugins = {
@@ -90,7 +90,7 @@ test('END-TO-END: register -> add employee -> check-in (photo+GPS) -> logout -> 
 
 test('admin and employee screens differ; manager sees team only; wrong PIN shows a clear message; app works with no stored login', async () => {
   const E = load(); E.x.setup(); const P = phone(E);
-  const r = E.api({ action: 'register_start', company_name: 'Beta Works', admin_name: 'B', mobile: '9876543210', email: 'b@beta.com', admin_pin: 'Secret123' }); const cid = r.company_id;
+  const r = E.api({ action: 'register_start', company_name: 'Beta Works', admin_name: 'B', mobile: '9876500001', email: 'b@beta.com', admin_pin: 'Secret123' }); const cid = r.company_id;
   const tok = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token;
   const m = E.api({ action: 'emp_add', token: tok, name: 'Meera Mgr', role: 'Manager' }), e = E.api({ action: 'emp_add', token: tok, name: 'Eka Emp', manager: 'M001' });
   await signIn(P, cid, 'E001', '000000'); await until(() => P.has('Incorrect Company ID'), 'wrong pin message');
@@ -101,11 +101,47 @@ test('admin and employee screens differ; manager sees team only; wrong PIN shows
 
 test('account deletion through the app: admin asks, password is checked, attendance switches off, request can be cancelled, owner can purge', async () => {
   const E = load(); E.x.setup(); const P = phone(E); P.w.alert = () => {}; P.w.prompt = (m) => { P.prompted = m; return P.promptAnswer; };
-  const r = E.api({ action: 'register_start', company_name: 'Gamma Works', admin_name: 'G', mobile: '9876543210', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const r = E.api({ action: 'register_start', company_name: 'Gamma Works', admin_name: 'G', mobile: '9876500002', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
   await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('nav [data-t="co"]'), 'admin home'); P.click('nav [data-t="co"]'); await until(() => P.$('#dr'), 'delete button');
   P.click('#dr'); await until(() => P.$('#dgo'), 'delete dialog'); assert.ok(P.has('permanently deleted')); P.type('#dp', 'wrongwrong'); P.click('#dgo');
   await until(() => P.has('Incorrect administrator password'), 'wrong password refused'); assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'Trial');
   P.type('#dp', 'Secret123'); P.click('#dgo'); await until(() => P.$('#dc'), 'cancel button appears');
   assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'DeletionRequested');
   P.click('#dc'); await until(() => P.$('#dr'), 'request cancelled'); assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'Trial');
+});
+
+test('v3.3 screens: trial text, plans button only when PAY_URL is set, reports locked after the trial, owner activates a plan in one tap', async () => {
+  // --- Play-style build: PAY_URL empty -> no payment link anywhere
+  let E = load(); E.x.setup(); let P = phone(E);
+  await until(() => P.$('#reg'), 'login'); P.click('#reg'); await until(() => P.$('#r_go'), 'register'); assert.ok(P.has('10-day trial') && P.has('5 staff'));
+  let r = E.api({ action: 'register_start', company_name: 'Plan Co', admin_name: 'P', mobile: '9812300001', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  P.click('#r_bk'); await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.has("Today's present"), 'dashboard');
+  assert.ok(!P.$('#pay'), 'no pay button without PAY_URL'); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company'); assert.ok(!P.$('#pay') && P.has('Free trial') && P.has('User limit5'));
+  // --- direct-APK build: PAY_URL set
+  E = load(); E.x.setup(); P = phone(E, { cfg: { PAY_URL: 'https://owner.github.io/site/' } });
+  r = E.api({ action: 'register_start', company_name: 'Plan Co', admin_name: 'P', mobile: '9812300001', email: '', admin_pin: 'Secret123' }); cid = r.company_id;
+  E.api({ action: 'emp_add', token: E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, name: 'Ravi Kumar' });
+  await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('#pay'), 'pay button on the dashboard during the trial');
+  P.click('#pay'); await until(() => P.calls.opened.length === 1, 'plans page opened'); assert.equal(P.calls.opened[0], 'https://owner.github.io/site/?cid=' + cid + '#plans');
+  // trial ends -> reports / location lists show the licence message with the pay button instead of data
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_update', token: o, company_id: cid, expiry: '2020-01-01' }); delete E.cache['co_' + cid];
+  P.click('nav [data-t="rep"]'); await until(() => P.has('free trial has ended') && P.$('#pay'), 'reports locked'); assert.ok(!P.$('button[data-k="all"]'));
+  P.click('nav [data-t="loc"]'); await until(() => P.has('free trial has ended') && P.$('#pay'), 'location list locked');
+  P.click('nav [data-t="dash"]'); await until(() => P.has("Today's present") && P.has('free trial has ended'), 'dashboard still opens and explains');
+  // owner: Activate plan (Business, 6 months)
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company'); P.click('#so');
+  await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
+  await until(() => P.has('Plan Co'), 'owner list'); P.d.querySelector('[data-c="' + cid + '"]').click(); await until(() => P.$('#a_go'), 'activate form');
+  assert.ok(P.has('Amount to collect: ₹150')); P.d.querySelector('#a_pl').value = 'Business'; P.d.querySelector('#a_pl').dispatchEvent(new P.w.Event('change')); P.d.querySelector('#a_mo').value = '6'; P.d.querySelector('#a_mo').dispatchEvent(new P.w.Event('change'));
+  assert.ok(P.has('Amount to collect: ₹2,700') && P.has('user limit 100')); P.click('#a_go');
+  await until(() => P.calls.alerts.some(a => /Business plan active until/.test(a) && a.includes('₹2,700')), 'activated');
+  await until(() => (P.d.querySelector('[data-c="' + cid + '"] .chip') || {}).textContent === 'Active' && P.has('Business') && P.has('limit 100'), 'owner list updated'); P.click('#ols');
+  delete E.cache['co_' + cid]; await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.has("Today's present"), 'admin back in');
+  P.click('nav [data-t="rep"]'); await until(() => P.$('button[data-k="all"]'), 'reports work again after payment'); P.click('button[data-k="all"]'); await until(() => P.calls.files.length === 1, 'excel downloads after payment');
+});
+test('a duplicate mobile number is refused on the registration screen with a clear message', async () => {
+  const E = load(); E.x.setup(); const P = phone(E); E.api({ action: 'register_start', company_name: 'Already Here', admin_name: 'A', mobile: '9812300009', email: '', admin_pin: 'Secret123' });
+  await until(() => P.$('#reg'), 'login'); P.click('#reg'); await until(() => P.$('#r_go'), 'register');
+  P.type('#r_co', 'Again Co'); P.type('#r_nm', 'A'); P.type('#r_mb', '+91 98123 00009'); P.type('#r_pw', 'Secret123'); P.d.querySelector('#r_ok').checked = true; P.click('#r_go');
+  await until(() => P.has('already registered with this mobile number'), 'duplicate refused'); assert.ok(P.$('#r_go'), 'stays on the form');
 });

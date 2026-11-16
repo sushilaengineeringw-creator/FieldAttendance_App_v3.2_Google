@@ -1,6 +1,6 @@
 # How to earn money from Field Attendance
 
-This is a **business-to-business subscription**: companies pay you monthly or yearly for each employee who uses the app. You already have the tools for it: a 14-day free trial, an expiry date per company, an employee limit, and an Owner screen to switch companies on/off or extend them.
+This is a **business-to-business subscription**: companies pay you monthly or yearly for each employee who uses the app. You already have the tools for it: a 10-day free trial limited to 5 staff, one trial per mobile number, reports locked until a plan is active, an expiry date and staff limit per company, and an Owner screen with one-click plan activation.
 
 > All rupee figures below are **examples to show the arithmetic**, not market data. Check what competitors in your area charge before you fix your prices.
 
@@ -8,7 +8,7 @@ This is a **business-to-business subscription**: companies pay you monthly or ye
 | Item | Suggestion |
 |---|---|
 | Who pays | The company (administrator), never the individual employee |
-| Free trial | 14 days (already built; change with the script property `TRIAL_DAYS`) |
+| Free trial | 10 days, up to 5 staff (built in; reports need a paid plan) |
 | Price | **Per active employee per month**, with a **minimum fee per company** (so tiny companies still cover your effort) |
 | Plans | Monthly, and **Annual paid in advance** (give 1-2 months free; you get cash up-front and fewer renewals to chase) |
 | Employee limit | Set the limit in the Owner screen to the number of employees the company paid for |
@@ -17,10 +17,10 @@ This is a **business-to-business subscription**: companies pay you monthly or ye
 **Example:** 40 rupees x 25 employees = 1,000 rupees per company per month. 50 such companies = 50,000 rupees per month. 200 companies = 2,00,000 rupees per month. Your real numbers depend on the price you set and how many companies you can sign.
 
 ## 2. How the money reaches you (outside the app - important)
-1. The customer registers and uses the 14-day trial.
+1. The customer registers and uses the 10-day trial.
 2. You (or a WhatsApp/phone conversation) agree the plan. You send a **GST invoice** (ask your CA how to register and invoice for software services).
 3. The customer pays by **UPI, bank transfer or a payment link** (for example Razorpay or Cashfree payment links - you don't need to write code for this).
-4. You open the app -> **Owner sign-in** -> choose the company -> set **Status = Active**, **Plan**, **Employee limit**, and **Extend by 30 / 365 days** -> Save.
+4. You open the app -> **Owner sign-in** -> choose the company -> use **Activate a paid plan**: choose the plan (Starter 25 / Growth 50 / Business 100 / Enterprise) and 1, 6 or 12 months, then Activate. The staff limit and expiry are set for you.
 5. Before expiry, remind the customer. If they don't pay, the company switches itself off at the expiry date: nobody can mark attendance, but the data is kept, so they come back to renew.
 
 ## 3. Google Play rules you must respect

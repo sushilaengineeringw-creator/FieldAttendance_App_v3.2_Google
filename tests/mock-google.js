@@ -107,7 +107,7 @@ function makeEnv() {
 }
 function load() {
   const E = makeEnv(), ctx = vm.createContext(E.env);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8') + '\n;this.__x={doGet,doPost,setup,ATT_H,EMP_H,CO_H,ymd_,addDays_};', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8') + '\n;this.__x={doGet,doPost,setup,ATT_H,EMP_H,CO_H,ymd_,addDays_,addMonths_};', ctx);
   const x = ctx.__x;
   const api = (body) => JSON.parse(x.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
   return Object.assign(E, { x, api, ctx });

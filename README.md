@@ -1,4 +1,4 @@
-# Field Attendance App (v3.2.0)
+# Field Attendance App (v3.3.0)
 
 One Android app, one central backend, many companies. Roles: company **Admin**, **Manager**, **Employee**, and the app **Owner**.
 

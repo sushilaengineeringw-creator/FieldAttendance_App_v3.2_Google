@@ -9,7 +9,7 @@ You need: one Google account for the product, a GitHub repo, and about 20 minute
 2. Replace everything in `Code.gs` with `apps-script/Code.gs` from this project. Save.
 3. **Project Settings (gear) -> Script properties**:
    - Add `OWNER_PASSWORD` = a long password only you know (your owner sign-in in the app).
-   - Optional `TRIAL_DAYS` = 14.
+   - Leave `TRIAL_DAYS` unset (the trial is 10 days with up to 5 staff). If you set it earlier to 14 or 30, delete it or set it to 10.
    - If you used the earlier Google-sign-in version: DELETE `CLIENT_ID`, `CLIENT_SECRET`, `ENC_KEY` and every `RT_...` property. They are no longer used. Keep `REGISTRY_ID`.
 4. Editor -> choose function `setup` -> **Run** -> approve the permissions (Sheets + Drive of the OWNER account - this is needed once because the script now creates the company sheets/folders). The log says "Setup complete".
 5. **Deploy -> Manage deployments -> pencil -> Version: New version -> Deploy** (Execute as **Me**, Who has access **Anyone**). The `/exec` URL stays the same, so the app does not need rebuilding if you already built with it. First time: **Deploy -> New deployment -> Web app**, copy the `/exec` URL.
