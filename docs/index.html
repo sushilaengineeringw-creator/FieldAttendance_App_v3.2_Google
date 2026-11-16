@@ -1,10 +1,421 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Home - Field Attendance</title><style>:root{--navy:#0b3a8c;--blue:#1565d8;--tx:#17212f;--mut:#5b6675}*{box-sizing:border-box}body{margin:0;font-family:system-ui,Roboto,Arial,sans-serif;color:var(--tx);line-height:1.6;background:#f2f6fc}
-header{background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff;padding:22px 20px}header b{font-size:20px}main{max-width:760px;margin:0 auto;padding:22px 20px 60px;background:#fff;min-height:80vh}
-h1{font-size:28px;margin:6px 0 4px;color:var(--navy)}h2{font-size:20px;margin:30px 0 6px;color:var(--navy)}p,li{font-size:16px}.mut{color:var(--mut);font-size:14px}a{color:var(--blue)}
-table{border-collapse:collapse;width:100%;font-size:15px}td,th{border:1px solid #d5deed;padding:8px 10px;text-align:left;vertical-align:top}th{background:#e8f0fe}.box{background:#e8f0fe;border-radius:10px;padding:12px 16px}</style></head><body>
-<header><b>Field Attendance</b></header><main>
-<h1>Field Attendance</h1><p>Attendance for field and site teams: employees mark attendance with a front-camera photo and GPS location; companies get a live dashboard and monthly Excel reports.</p>
-<ul><li><a href="privacy-policy.html">Privacy Policy</a></li><li><a href="terms.html">Terms of Use</a></li><li><a href="delete-account.html">Delete your account and data</a></li></ul>
-<p>Contact: <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a></p>
-<p class="mut" style="margin-top:40px"><a href="index.html">Home</a> &middot; <a href="privacy-policy.html">Privacy Policy</a> &middot; <a href="terms.html">Terms of Use</a> &middot; <a href="delete-account.html">Delete account</a></p>
-</main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Attendance: selfie and GPS attendance for field staff</title>
+<meta name="description" content="Your staff check in with a selfie and GPS location. You get a monthly Excel attendance register. 10 days free, then plans from ₹150 a month, paid by UPI.">
+<meta name="theme-color" content="#F1F5F2">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Field Attendance: see who checked in, and from where">
+<meta property="og:description" content="Selfie and GPS attendance for field and site staff. Monthly Excel register. 10 days free, then plans from ₹150 a month.">
+<meta property="og:image" content="https://sushilaengineeringw-creator.github.io/FieldAttendance_App_v3.2_Google/og-image.png">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=Hind:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --paper:#F1F5F2; --sheet:#FFFFFF; --ink:#102A3B; --ink-2:#4A6070; --rule:#CBD8D1;
+  --pen:#1B4FD6; --pen-dark:#143BA8; --pen-tint:#EAF0FF;
+  --present:#1B8A57; --present-bg:#DDF1E6; --leave:#C8402B; --leave-bg:#F9E1DB; --off:#5B6B77; --off-bg:#E4EAEE;
+  --mc:#8A5A00; --mc-bg:#FBEBCB;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.55 Hind,system-ui,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;padding-bottom:76px}
+h1,h2,h3{font-family:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;line-height:1.1;letter-spacing:-.015em;margin:0}
+h1{font-size:clamp(2.2rem,8.5vw,3.7rem);font-weight:700}
+h2{font-size:clamp(1.65rem,5.5vw,2.3rem);font-weight:700}
+h3{font-size:1.15rem;font-weight:600}
+p{margin:0}
+a{color:var(--pen)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+:focus-visible{outline:3px solid var(--pen);outline-offset:3px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:12px 22px;border-radius:8px;border:2px solid var(--pen);background:var(--pen);color:#fff;font:600 1rem/1.2 Hind,system-ui,sans-serif;text-decoration:none;cursor:pointer;text-align:center}
+.btn:hover{background:var(--pen-dark);border-color:var(--pen-dark)}
+.btn.alt{background:transparent;color:var(--pen)}
+.btn.alt:hover{background:var(--pen-tint)}
+.fine{font-size:.92rem;color:var(--ink-2)}
+
+/* top bar */
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 0}
+.brand{display:flex;align-items:center;gap:10px;font:700 1.15rem "Familjen Grotesk",system-ui,sans-serif;color:var(--ink);text-decoration:none}
+.brand img{width:34px;height:34px;border-radius:8px}
+.top nav{display:flex;gap:16px;font-weight:500}
+.top nav a{color:var(--ink);text-decoration:none}
+.top nav a:hover{text-decoration:underline}
+@media(max-width:520px){.top nav a[href="#faq"]{display:none}}
+
+/* hero */
+.hero{display:grid;gap:36px;padding:16px 0 56px}
+.hero .lead{font-size:1.15rem;color:var(--ink-2);max-width:34em;margin-top:18px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin:26px 0 14px}
+@media(min-width:900px){.hero{grid-template-columns:1fr 1.1fr;align-items:center;gap:56px;padding:32px 0 72px}}
+
+/* the register: the one memorable element */
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:14px 12px 12px;box-shadow:0 1px 0 var(--rule)}
+.sheet h2{font-size:1rem;font-weight:600;margin-bottom:8px;letter-spacing:0}
+.reg{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
+.reg th,.reg td{padding:0;height:27px;text-align:center;font-size:11px;font-weight:600}
+.reg thead th{color:var(--ink-2);font-weight:500;border-bottom:1px solid var(--ink)}
+.reg thead th.sun{color:var(--off)}
+.reg .name{width:23%;text-align:left;font-size:13px;font-weight:500;padding-left:2px;border-right:3px double var(--leave)}
+.reg .tot{width:12%;font-size:13px}
+.reg tbody tr{border-bottom:1px solid var(--rule)}
+.reg tbody td.tot{font-weight:600}
+.c{display:block;margin:2px auto;width:88%;max-width:26px;line-height:23px;border-radius:3px;animation:stamp .32s ease-out both;animation-delay:calc(var(--i)*50ms + 200ms)}
+.c.P{background:var(--present-bg);color:var(--present)}
+.c.L{background:var(--leave-bg);color:var(--leave)}
+.c.WO{background:var(--off-bg);color:var(--off);font-size:9.5px}
+.c.MC{background:var(--mc-bg);color:var(--mc);font-size:9.5px}
+.c.none{background:transparent;animation:none}
+@keyframes stamp{from{opacity:0;transform:scale(1.6)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.c{animation:none}html{scroll-behavior:auto}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:.85rem;color:var(--ink-2)}
+.legend b{display:inline-block;min-width:24px;padding:0 4px;margin-right:4px;border-radius:3px;text-align:center;font-size:.78rem}
+.legend .P{background:var(--present-bg);color:var(--present)}
+.legend .L{background:var(--leave-bg);color:var(--leave)}
+.legend .WO{background:var(--off-bg);color:var(--off)}
+.legend .MC{background:var(--mc-bg);color:var(--mc)}
+.latest{display:flex;gap:10px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule);font-size:.95rem}
+.latest svg{flex:none}
+.sample{margin-top:8px;font-size:.82rem;color:var(--ink-2)}
+
+/* sections */
+.sec{padding:52px 0;border-top:1px solid var(--rule)}
+.sec>.wrap>p.intro{margin-top:12px;color:var(--ink-2);max-width:38em}
+.steps{list-style:none;margin:28px 0 0;padding:0;counter-reset:s;max-width:44em}
+.steps>li{position:relative;padding:0 0 30px 58px;counter-increment:s}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:38px;height:38px;border:1.5px solid var(--ink);border-radius:50%;display:grid;place-items:center;font:700 1rem "Familjen Grotesk",system-ui,sans-serif;background:var(--paper)}
+.steps>li::after{content:"";position:absolute;left:18px;top:44px;bottom:6px;width:2px;background:var(--rule)}
+.steps>li:last-child{padding-bottom:0}
+.steps>li:last-child::after{display:none}
+.steps h3{margin:6px 0 6px}
+.steps p{color:var(--ink-2)}
+
+.rows{margin:26px 0 0;max-width:52em}
+.rows>div{display:grid;gap:4px 28px;padding:16px 0;border-top:1px solid var(--rule)}
+.rows>div:last-child{border-bottom:1px solid var(--rule)}
+.rows dt{font:600 1.1rem "Familjen Grotesk",system-ui,sans-serif}
+.rows dd{margin:0;color:var(--ink-2)}
+@media(min-width:760px){.rows>div{grid-template-columns:15em 1fr}}
+
+/* plans */
+fieldset{border:0;margin:0;padding:0;min-width:0}
+legend{padding:0;font-weight:600;margin-bottom:8px}
+.seg{display:flex;border:1.5px solid var(--ink);border-radius:8px;overflow:hidden;max-width:34em;background:#fff}
+.segopt{position:relative;flex:1;cursor:pointer}
+.segopt+.segopt{border-left:1.5px solid var(--ink)}
+.segopt input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.segopt span{display:block;padding:11px 6px;text-align:center;font-weight:600;line-height:1.25}
+.segopt small{display:block;font-weight:400;font-size:.78rem}
+.segopt input:checked+span{background:var(--ink);color:#fff}
+.segopt input:focus-visible+span{outline:3px solid var(--pen);outline-offset:-3px}
+.plans{margin-top:22px;max-width:34em}
+.plan{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:16px;margin-top:10px;background:#fff;border:1.5px solid var(--rule);border-radius:8px;cursor:pointer}
+.plan.on{border-color:var(--pen);background:var(--pen-tint)}
+.plan input{width:20px;height:20px;margin:0;accent-color:var(--pen)}
+.plan .pn{font:700 1.15rem "Familjen Grotesk",system-ui,sans-serif}
+.plan .ps{display:block;color:var(--ink-2);font-size:.92rem}
+.plan .pp{text-align:right;font:700 1.35rem "Familjen Grotesk",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.plan .pp small{display:block;font:400 .8rem Hind,system-ui,sans-serif;color:var(--ink-2)}
+.more{margin-top:14px;max-width:34em}
+
+/* buy */
+.field{display:block;margin:14px 0 6px;font-weight:600}
+.field input{display:block;width:100%;max-width:20em;margin-top:6px;padding:12px;border:1.5px solid var(--ink);border-radius:8px;font:500 1.05rem Hind,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;background:#fff;color:var(--ink)}
+.field input::placeholder{text-transform:none;letter-spacing:0;color:#8A9AA6}
+.total{margin:16px 0 12px;padding:14px 16px;background:#fff;border:1.5px solid var(--rule);border-radius:8px;max-width:34em}
+.total strong{font:700 1.5rem "Familjen Grotesk",system-ui,sans-serif}
+.qr{width:fit-content;background:#fff;padding:12px;border:1.5px solid var(--rule);border-radius:6px;margin:12px 0}
+.qr svg{display:block;width:176px;height:176px}
+.upi-id{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.upi-id code{font:600 1rem ui-monospace,Consolas,monospace;background:#fff;border:1px solid var(--rule);border-radius:6px;padding:8px 10px;word-break:break-all}
+.btn.small{min-height:40px;padding:8px 14px;font-size:.95rem}
+.only-touch{display:none}
+@media(pointer:coarse){.only-touch{display:inline-flex}.only-mouse{display:none}}
+details{border-top:1px solid var(--rule)}
+details:last-of-type{border-bottom:1px solid var(--rule)}
+summary{cursor:pointer;padding:16px 0;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font:600 1.4rem/1 Hind,sans-serif;color:var(--ink-2)}
+details[open]>summary::after{content:"\2212"}
+details .ans{padding:0 0 16px;color:var(--ink-2);max-width:44em}
+.faq{margin-top:22px;max-width:52em}
+.inst{margin:12px 0 0;max-width:38em}
+.inst summary{padding:10px 0;font-weight:500;color:var(--pen)}
+.note{margin-top:22px;padding:16px;border-left:4px solid var(--present);background:#fff;max-width:44em}
+
+footer{padding:36px 0 40px;border-top:1px solid var(--rule);color:var(--ink-2);font-size:.95rem}
+footer .links{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px}
+
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--rule)}
+.bar .btn{flex:1;min-height:46px;padding:10px 12px}
+@media(min-width:900px){.bar{display:none}body{padding-bottom:0}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#top"><img src="icon.png" alt="" width="34" height="34">Field Attendance</a>
+    <nav aria-label="Main"><a href="#plans">Plans</a><a href="#faq">Questions</a><a data-wa="Hello, I have a question about Field Attendance." href="#">WhatsApp</a></nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="h1">
+      <div>
+        <h1 id="h1">See who checked in, and from where.</h1>
+        <p class="lead">Your staff take a selfie and share their GPS location when they start work. You get a monthly Excel attendance register, ready for salary day.</p>
+        <div class="cta">
+          <a class="btn" href="#buy">Start 10-day free trial</a>
+          <a class="btn alt" href="#plans">See plans and prices</a>
+        </div>
+        <p class="fine">No Google account needed. Android phones. 10 days free for up to 5 staff, then plans from ₹150 a month, paid by UPI.</p>
+      </div>
+
+      <div>
+        <div class="sheet">
+          <h2>November attendance register</h2>
+          <table class="reg" id="reg" aria-label="Sample monthly attendance register"></table>
+          <div class="legend" aria-label="Legend">
+            <span><b class="P">P</b>present</span><span><b class="L">L</b>leave</span><span><b class="WO">WO</b>weekly off</span><span><b class="MC">MC</b>check-out missed</span>
+          </div>
+          <div class="latest">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B8A57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z"/><path d="m9 10 2 2 4-4"/></svg>
+            <span>Latest check-in: Sunil, 9:12 am, 40 m from the site, with photo.</span>
+          </div>
+        </div>
+        <p class="sample">This is a sample register. The names are made up.</p>
+      </div>
+    </section>
+
+    <noscript><p class="note">Please turn on JavaScript to see plans and pay. Or message us on WhatsApp and we will help you.</p></noscript>
+  </main>
+</div>
+
+<section class="sec" aria-labelledby="how">
+  <div class="wrap">
+    <h2 id="how">Set up in a few minutes</h2>
+    <ol class="steps">
+      <li><h3>Install the app and register your company</h3><p>Enter your company name, your name, a mobile number and a password. The app gives you a Company ID.</p></li>
+      <li><h3>Add your staff</h3><p>The app makes an ID and a PIN for each person. Share them on WhatsApp.</p></li>
+      <li><h3>Staff check in and out</h3><p>At check-in they take a selfie and the app records the GPS location. At check-out it records the location only.</p></li>
+      <li><h3>Download the monthly register</h3><p>One Excel file with present, leave and weekly off for every person, hours worked, and a location report with photo links.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="get">
+  <div class="wrap">
+    <h2 id="get">What you get</h2>
+    <dl class="rows">
+      <div><dt>Selfie at check-in</dt><dd>A front-camera photo is taken at check-in, so you can see who started work.</dd></div>
+      <div><dt>GPS location</dt><dd>Latitude, longitude and a map link for every check-in and check-out. Location is recorded only when staff tap the button, never in the background.</dd></div>
+      <div><dt>Work site and radius</dt><dd>Set a site and a distance for each person. Check-ins away from the site are flagged for you.</dd></div>
+      <div><dt>Excel register</dt><dd>P, L, WO and MC codes with Sundays marked, daily hours and totals for every person.</dd></div>
+      <div><dt>Managers</dt><dd>A manager sees only their own team.</dd></div>
+      <div><dt>Your data stays separate</dt><dd>Each company's records are kept apart. You can delete your company and all its data from inside the app.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="sec" id="plans" aria-labelledby="ph">
+  <div class="wrap">
+    <h2 id="ph">Plans and prices</h2>
+    <p class="intro">Choose your staff size and how long you want to pay for. Prices are in rupees. Taxes, if applicable, are extra. Every new company gets 10 days free for up to 5 staff, and you can pay at any time during the trial. Staff includes managers.</p>
+    <fieldset style="margin-top:22px">
+      <legend>Pay for</legend>
+      <div class="seg" id="periods"></div>
+    </fieldset>
+    <fieldset class="plans">
+      <legend>Staff size</legend>
+      <div id="planList"></div>
+    </fieldset>
+    <p class="more fine">Need something different, such as more than 500 staff? <a data-wa="Hello, I need a special plan for Field Attendance." href="#">Message us on WhatsApp</a>.</p>
+  </div>
+</section>
+
+<section class="sec" id="buy" aria-labelledby="bh">
+  <div class="wrap">
+    <h2 id="bh">Start free, pay when you are ready</h2>
+    <ol class="steps">
+      <li>
+        <h3>Install the app and register</h3>
+        <p>Download the Android app, open it and tap Register. You get a Company ID on the screen.</p>
+        <p style="margin-top:14px"><a class="btn" id="dl" href="field-attendance.apk" download>Download the Android app</a></p>
+        <details class="inst"><summary>How to install</summary>
+          <div class="ans">
+            <p>1. Open the downloaded file.<br>2. If Android asks, allow your browser to install apps.<br>3. Tap Install, then open the app and tap Register.</p>
+            <p style="margin-top:8px">Android may warn that the app is from outside Google Play, because we offer it to you directly. The app asks only for camera and location.</p>
+          </div>
+        </details>
+      </li>
+      <li>
+        <h3>Pay by UPI</h3>
+        <p id="sum">Choose a plan above.</p>
+        <label class="field" for="cid">Your Company ID <span class="fine" style="font-weight:400">(optional, from the app)</span>
+          <input id="cid" type="text" inputmode="text" autocomplete="off" maxlength="8" placeholder="For example FA24Z5X">
+        </label>
+        <div class="total"><span>Amount to pay</span><br><strong id="amt">&#8377;0</strong></div>
+        <div id="upiBlock">
+          <a class="btn only-touch" id="payBtn" href="#">Pay with UPI app</a>
+          <div class="only-mouse">
+            <p class="fine">Scan with any UPI app on your phone.</p>
+            <div class="qr" id="qr1"></div>
+          </div>
+          <details class="only-touch inst" style="display:none"><summary>Paying from another phone? Show the QR code</summary><div class="qr" id="qr2"></div></details>
+          <div class="upi-id"><span class="fine">UPI ID</span><code id="upiText"></code><button class="btn alt small" type="button" id="copyUpi">Copy UPI ID</button></div>
+        </div>
+        <p class="note" id="upiMissing" hidden>Online payment details are being set up. Message us on WhatsApp and we will send you the UPI details.</p>
+      </li>
+      <li>
+        <h3>Send us the payment screenshot</h3>
+        <p>Message us your Company ID and the screenshot on WhatsApp. We switch on your plan after we see the payment. Your staff keep using the same app, so there is nothing to reinstall. Your paid period starts on the day we switch it on.</p>
+        <p style="margin-top:14px"><a class="btn alt" id="waBtn" href="#">Message us on WhatsApp</a></p>
+      </li>
+    </ol>
+    <p class="note">When the 10-day trial ends and no plan is on, attendance and reports stop until we switch a plan on. Your records stay safe.</p>
+  </div>
+</section>
+
+<section class="sec" id="faq" aria-labelledby="fh">
+  <div class="wrap">
+    <h2 id="fh">Questions</h2>
+    <div class="faq">
+      <details><summary>What does the free trial include?</summary><div class="ans">10 days, for up to 5 staff, with every feature. There is one free trial for each mobile number.</div></details>
+      <details><summary>Do my staff need a Google account?</summary><div class="ans">No. They sign in with the Company ID, their own ID and a PIN.</div></details>
+      <details><summary>Does it work on iPhone?</summary><div class="ans">Not yet. The app is for Android phones.</div></details>
+      <details><summary>Does it need internet?</summary><div class="ans">Yes. Check-in and check-out need internet and GPS.</div></details>
+      <details><summary>Where is my data kept?</summary><div class="ans">Records, photos and reports are stored in Google Drive and Google Sheets under our account, in a separate sheet and folders for each company. Read the <a href="privacy-policy.html">Privacy Policy</a> for details.</div></details>
+      <details><summary>Can I stop paying?</summary><div class="ans">Yes. Do not renew. When a plan ends, attendance and reports switch off, and your records stay until you delete your company inside the app.</div></details>
+      <details><summary>How do I add more staff later?</summary><div class="ans">Pick a bigger plan on this page, pay the amount, and send us the screenshot. We switch you to the new plan.</div></details>
+      <details><summary>Is the app on Google Play?</summary><div class="ans">We are preparing the Google Play version. Until then, install the app from this page.</div></details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Field Attendance is made by Sushila Engineering Works, Pimprala, Plot No 17, Veer Savarkar Nagar, Jalgaon, Maharashtra, India.</p>
+    <p style="margin-top:6px"><a id="mail" href="#">Email us</a></p>
+    <div class="links"><a href="privacy-policy.html">Privacy Policy</a><a href="terms.html">Terms of Use</a><a href="delete-account.html">Delete your account</a></div>
+    <p style="margin-top:14px" class="fine">&copy; <span id="yr"></span> Sushila Engineering Works</p>
+  </div>
+</footer>
+
+<div class="bar">
+  <a class="btn" href="#buy">Start free trial</a>
+  <a class="btn alt" data-wa="Hello, I have a question about Field Attendance." href="#">WhatsApp</a>
+</div>
+
+<script>var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1})},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(){var t=n("友");if(2!=t.length||38726!=(t[0]<<8|t[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}(function(){return qrcode});</script>
+<script>
+// ====== EDIT THESE ======
+const CFG = {
+  UPI_ID: "PASTE-YOUR-UPI-ID@bank",          // your UPI ID, e.g. 9284358304@okbank
+  UPI_NAME: "Sushila Engineering Works",     // name shown in the customer's UPI app
+  WHATSAPP: "919284358304",                  // country code + number, no + or spaces
+  EMAIL: "sales.sushilaengineering@gmail.com",
+  // price = rupees for 1 / 6 / 12 months, exactly as you want to charge. These must match the prices in the app's Owner screen.
+  PLANS: [
+    { id: "S", name: "Starter",    staff: 25,  staffText: "Up to 25 staff",  price: { 1: 150,  6: 800,   12: 1440 } },
+    { id: "G", name: "Growth",     staff: 50,  staffText: "Up to 50 staff",  price: { 1: 299,  6: 1600,  12: 2880 } },
+    { id: "B", name: "Business",   staff: 100, staffText: "Up to 100 staff", price: { 1: 499,  6: 2700,  12: 4800 } },
+    { id: "E", name: "Enterprise", staff: 500, staffText: "More than 100 staff", price: { 1: 2000, 6: 12000, 12: 24000 } }
+  ],
+  PERIODS: [
+    { months: 1,  label: "1 month" },
+    { months: 6,  label: "6 months",  note: "Save up to 10%" },
+    { months: 12, label: "12 months", note: "Save 20%" }
+  ]
+};
+// ====== END ======
+
+const $ = (s, r = document) => r.querySelector(s);
+const enc = encodeURIComponent;
+const rupees = n => "₹" + new Intl.NumberFormat("en-IN").format(Math.round(n));
+const UPI_READY = !/PASTE|YOUR/i.test(CFG.UPI_ID);
+let plan = CFG.PLANS[0], period = CFG.PERIODS[0];
+const priceOf = (p, per) => p.price[per.months], saveOf = (p, per) => Math.max(0, p.price[1] * per.months - p.price[per.months]);
+
+/* sample register */
+(function () {
+  const days = 12, sun = [1, 8];
+  const rows = [
+    ["Ramesh", "WO P P P P P P WO P P P -"],
+    ["Sunil",  "WO P P L P P P WO P P P -"],
+    ["Anil",   "WO P P P P P MC WO P P L -"],
+    ["Vijay",  "WO P L P P P P WO P P P -"]
+  ];
+  let h = "<thead><tr><th class='name'></th>";
+  for (let d = 1; d <= days; d++) h += "<th" + (sun.includes(d) ? " class='sun'" : "") + ">" + d + "</th>";
+  h += "<th class='tot'>P</th></tr></thead><tbody>";
+  rows.forEach((r, ri) => {
+    const codes = r[1].split(" ");
+    h += "<tr><td class='name'>" + r[0] + "</td>";
+    codes.forEach((c, i) => {
+      h += c === "-" ? "<td><span class='c none'>&nbsp;</span></td>" : "<td><span class='c " + c + "' style='--i:" + (i + ri * 2) + "'>" + c + "</span></td>";
+    });
+    h += "<td class='tot'>" + codes.filter(c => c === "P").length + "</td></tr>";
+  });
+  $("#reg").innerHTML = h + "</tbody>";
+})();
+
+/* links */
+const waLink = text => "https://wa.me/" + CFG.WHATSAPP + "?text=" + enc(text);
+document.querySelectorAll("[data-wa]").forEach(a => { a.href = waLink(a.dataset.wa); a.target = "_blank"; a.rel = "noopener"; });
+$("#mail").href = "mailto:" + CFG.EMAIL;
+$("#mail").textContent = CFG.EMAIL;
+$("#yr").textContent = new Date().getFullYear();
+
+/* plans */
+function renderPeriods() {
+  $("#periods").innerHTML = CFG.PERIODS.map((p, i) =>
+    "<label class='segopt'><input type='radio' name='period' value='" + i + "'" + (p === period ? " checked" : "") + "><span>" + p.label + (p.note ? "<small>" + p.note + "</small>" : "") + "</span></label>").join("");
+  document.querySelectorAll("input[name=period]").forEach(r => r.addEventListener("change", () => { period = CFG.PERIODS[+r.value]; renderPlans(); update(); }));
+}
+function renderPlans() {
+  $("#planList").innerHTML = CFG.PLANS.map(p => {
+    const total = priceOf(p, period), per = total / period.months, save = saveOf(p, period);
+    return "<label class='plan" + (p === plan ? " on" : "") + "'><input type='radio' name='plan' value='" + p.id + "'" + (p === plan ? " checked" : "") + ">" +
+      "<span><span class='pn'>" + p.name + "</span><span class='ps'>" + p.staffText + "</span></span>" +
+      "<span class='pp'>" + rupees(total) + "<small>" + (period.months === 1 ? "a month" : rupees(per) + " a month" + (save ? ", save " + rupees(save) : "")) + "</small></span></label>";
+  }).join("");
+  document.querySelectorAll("input[name=plan]").forEach(r => r.addEventListener("change", () => { plan = CFG.PLANS.find(p => p.id === r.value); renderPlans(); update(); }));
+}
+
+/* payment */
+const cleanId = () => $("#cid").value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+function qrSvg(text) { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); }
+function update() {
+  const total = priceOf(plan, period), cid = cleanId();
+  $("#sum").textContent = plan.name + " plan, " + plan.staffText.toLowerCase() + ", for " + period.label + ".";
+  $("#amt").textContent = rupees(total);
+  const note = "FA " + plan.name + " " + period.months + "m" + (cid ? " " + cid : "");
+  const upi = "upi://pay?pa=" + enc(CFG.UPI_ID) + "&pn=" + enc(CFG.UPI_NAME) + "&am=" + total.toFixed(2) + "&cu=INR&tn=" + enc(note);
+  if (UPI_READY) {
+    $("#payBtn").href = upi; $("#payBtn").textContent = "Pay " + rupees(total) + " with UPI app";
+    const svg = qrSvg(upi); $("#qr1").innerHTML = svg; $("#qr2").innerHTML = svg;
+    $("#upiText").textContent = CFG.UPI_ID;
+  }
+  $("#waBtn").href = waLink("Hello, I want the " + plan.name + " plan (" + plan.staffText.toLowerCase() + ") for " + period.label + ".\nCompany ID: " + (cid || "(will send)") + "\nI paid " + rupees(total) + " by UPI. Screenshot attached.");
+  $("#waBtn").target = "_blank"; $("#waBtn").rel = "noopener";
+}
+if (!UPI_READY) { $("#upiBlock").hidden = true; $("#upiMissing").hidden = false; console.warn("Field Attendance site: set CFG.UPI_ID in index.html"); }
+$("#cid").addEventListener("input", e => { e.target.value = cleanId(); update(); });
+$("#copyUpi").addEventListener("click", async e => {
+  try { await navigator.clipboard.writeText(CFG.UPI_ID); e.target.textContent = "UPI ID copied"; }
+  catch (_) { window.prompt("Copy this UPI ID", CFG.UPI_ID); }
+});
+// the "another phone" QR box is only for touch screens
+if (matchMedia("(pointer:coarse)").matches) { const d = document.querySelector("details.only-touch"); if (d) d.style.display = "block"; }
+
+{ const q = new URLSearchParams(location.search).get('cid'); if (q) $("#cid").value = q.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8); }
+renderPeriods(); renderPlans(); update();
+</script>
+</body>
+</html>
