@@ -98,6 +98,8 @@ function route_(req) {
     case 'owner_activate': return ownerActivate_(req);
     case 'owner_detail': return ownerDetail_(req);
     case 'owner_purge': return ownerPurge_(req);
+    case 'owner_reset_admin': return ownerResetAdmin_(req);
+    case 'admin_change_password': return adminChangePassword_(req);
     default: throw fail_('BAD_REQUEST', 'Unknown request.');
   }
 }
@@ -434,7 +436,16 @@ function dashboard_(req) {
     if (d === today) { pres[id] = 1; if (r[ea_('Status')] === 'OPEN') open++; else done++; } else if (r[ea_('Status')] === 'OPEN') missed++;
   });
   var presentToday = Object.keys(pres).length;
-  return { today: today, total_employees: emps.length, active_employees: active.length, present_today: presentToday, absent_today: Math.max(0, active.length - presentToday),
+  // v3.4: who is in / done / absent today (names), so the admin can see it live. Extra fields only - older apps ignore them.
+  var byE = {}; rows.forEach(function (r) {
+    if (r[ea_('Date')] !== today) return; var id = String(r[ea_('Employee ID')]), t = str_(r[ea_('IN Time')]), o = str_(r[ea_('OUT Time')]), isOpen = r[ea_('Status')] === 'OPEN', b = byE[id];
+    if (!b) b = byE[id] = { in_time: t, out_time: '', open: false }; if (t && (!b.in_time || t < b.in_time)) b.in_time = t; if (isOpen) b.open = true; else if (o && o > b.out_time) b.out_time = o;
+  });
+  var presentList = [], absentList = [];
+  emps.forEach(function (e) { var b = byE[e.id]; if (b) presentList.push({ id: e.id, name: e.name, in_time: b.in_time, out_time: b.open ? '' : b.out_time, status: b.open ? 'IN' : 'DONE' }); });
+  presentList.sort(function (a, b) { return a.in_time < b.in_time ? -1 : a.in_time > b.in_time ? 1 : 0; });
+  active.forEach(function (e) { if (!byE[e.id]) absentList.push({ id: e.id, name: e.name, department: e.department }); });
+  return { today: today, present_list: presentList, absent_list: absentList, updated_at: new Date().toISOString(), total_employees: emps.length, active_employees: active.length, present_today: presentToday, absent_today: Math.max(0, active.length - presentToday),
     logged_in_now: open, completed_checkouts: done, missed_checkouts: missed, month_attendance_days: Object.keys(monthDays).length, licence: coLicence_(x.co) };
 }
 function attList_(req) {
@@ -632,6 +643,22 @@ function ownerActivate_(req) {
   co.status = 'Active'; co.plan = name; co.limit = lim; co.expiry = addMonths_(base, months);
   saveCo_(co); audit_(co.id, 'OWNER', 'ACTIVATE', name + ' ' + months + 'm Rs' + plan.price[months] + ' until ' + co.expiry);
   return { company: coPublic_(co), price: plan.price[months] };
+}
+function ownerResetAdmin_(req) {
+  ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');
+  if (['Pending', 'Deleted'].indexOf(co.status) >= 0) throw fail_('BAD_REQUEST', 'The administrator password cannot be reset (status: ' + co.status + ').');
+  var pw = str_(req.password) || rnd_(8, 'abcdefghjkmnpqrstuvwxyz23456789'); if (!validPin_(pw, 6)) throw fail_('BAD_REQUEST', 'Password must be 6-20 letters/numbers.');
+  co.salt = rnd_(16, 'abcdef0123456789'); co.hash = hashPin_(co.salt, pw); saveCo_(co);
+  C_().remove('fail_' + co.id + '_ADMIN'); audit_(co.id, 'OWNER', 'ADMIN_PASSWORD_RESET', '');
+  return { company_id: co.id, admin_name: co.adminName, password: pw };
+}
+function adminChangePassword_(req) {
+  var x = ctx_(req, ['ADMIN']), co = x.co, fk = 'fail_' + co.id + '_ADMIN', fails;
+  try { fails = lockCheck_(fk); } catch (e) { throw fail_('PASSWORD_LOCKED', e.message); }
+  if (!safeEq_(hashPin_(co.salt, str_(req.old_pin)), co.hash)) { C_().put(fk, String(fails + 1), 900); throw fail_('PASSWORD_BAD', 'Incorrect current password.'); }
+  var np = str_(req.new_pin); if (!validPin_(np, 6)) throw fail_('BAD_REQUEST', 'New password must be 6-20 letters/numbers.');
+  C_().remove(fk); co.salt = rnd_(16, 'abcdef0123456789'); co.hash = hashPin_(co.salt, np); saveCo_(co); audit_(co.id, 'ADMIN', 'PASSWORD_CHANGE', '');
+  return { ok: true };
 }
 function ownerDetail_(req) {
   ctx_(req, ['OWNER']); var co = loadCo_(req.company_id); if (!co) throw fail_('NO_COMPANY', 'Company not found.');
