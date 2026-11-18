@@ -9,7 +9,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal(e.reason && e.rea
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
 const serverUrl = () => (store.get('server_url') || window.APP_CONFIG.SERVER_URL).trim();
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const cfgUrl = (k) => { const v = String((window.APP_CONFIG && window.APP_CONFIG[k]) || '').trim(); return /^https:\/\//.test(v) ? v : ''; };
 const cap = window.Capacitor;
 const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
@@ -135,7 +135,7 @@ async function getLocation() {
   try {
     if (G) {
       const perm = await G.checkPermissions();
-      if (perm.location !== 'granted') { const r = await G.requestPermissions(); if (r.location !== 'granted') throw new Error('Location permission is denied. Enable it in Settings > Apps > VATS Attendance > Permissions > Location.'); }
+      if (perm.location !== 'granted') { const r = await G.requestPermissions(); if (r.location !== 'granted') throw new Error('Location permission is denied. Enable it in Settings > Apps > Field Attendance > Permissions > Location.'); }
     }
     return await new Promise((resolve, reject) => {
       let best = null, done = false, id = null, timer = null;
@@ -160,7 +160,7 @@ async function takePhoto() {   // returns a data URL (jpeg) or null if cancelled
   if (isNative && !C) throw new Error('Camera component is missing in this app build. Please install the latest APK.');
   if (C) {
     try {
-      const perm = await C.checkPermissions(); if (perm.camera !== 'granted') { const r = await C.requestPermissions({ permissions: ['camera'] }); if (r.camera !== 'granted') throw new Error('Camera permission is denied. Enable it in Settings > Apps > VATS Attendance > Permissions.'); }
+      const perm = await C.checkPermissions(); if (perm.camera !== 'granted') { const r = await C.requestPermissions({ permissions: ['camera'] }); if (r.camera !== 'granted') throw new Error('Camera permission is denied. Enable it in Settings > Apps > Field Attendance > Permissions.'); }
       const ph = await C.getPhoto({ quality: 60, width: 800, resultType: 'base64', source: 'CAMERA', direction: 'FRONT', correctOrientation: true, saveToGallery: false });
       return 'data:image/' + (ph.format === 'png' ? 'png' : 'jpeg') + ';base64,' + ph.base64String;
     } catch (e) { if (/cancel/i.test(e.message)) return null; throw e; }
@@ -209,7 +209,7 @@ async function startCheckIn() {
 async function ensureLocPermission() {
   const G = plugin('Geolocation'); if (!G) return;
   const perm = await G.checkPermissions();
-  if (perm.location !== 'granted') { const r = await G.requestPermissions(); if (r.location !== 'granted') throw new Error('Location permission is denied. Enable it in Settings > Apps > VATS Attendance > Permissions > Location.'); }
+  if (perm.location !== 'granted') { const r = await G.requestPermissions(); if (r.location !== 'granted') throw new Error('Location permission is denied. Enable it in Settings > Apps > Field Attendance > Permissions > Location.'); }
 }
 function acquireLocation() {
   const f = flow; if (!f) return Promise.resolve();
@@ -327,15 +327,32 @@ function showTab(id) {
   $app.innerHTML = '<div class="small" style="text-align:center;padding:30px">Loading…</div>';
   ({ dash: renderDash, emps: renderEmps, loc: renderLoc, rep: renderRep, co: renderCo })[id]().catch((e) => { if (isLicence(e)) { $app.innerHTML = licenceBlock(e); bindPay(); return; } if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button id="rt">Retry</button>`; if (g('rt')) g('rt').onclick = () => showTab(id); });
 }
-async function renderDash() {
-  const d = await call('dashboard'), l = d.licence;
-  const st = (n, t) => `<div class="stat"><b>${n}</b><span>${t}</span></div>`;
-  $app.innerHTML = `<div class="small" style="margin-bottom:8px">${esc(S.company.name)} · ${fmtDate(d.today)}</div>
+function dashList(title, rows, kind) {
+  const hm = (t) => esc(String(t || '').slice(0, 5));
+  const row = (p) => kind === 'absent'
+    ? `<div class="row"><span>${esc(p.name)} <span class="small">${esc(p.id)}${p.department ? ' · ' + esc(p.department) : ''}</span></span></div>`
+    : `<div class="row"><span>${esc(p.name)} <span class="small">${esc(p.id)}</span></span><span>${hm(p.in_time)}${p.status === 'DONE' && p.out_time ? ' → ' + hm(p.out_time) : ''} <span class="chip ${p.status === 'IN' ? 'Active' : ''}">${p.status === 'IN' ? 'In' : 'Done'}</span></span></div>`;
+  return `<div class="card"><b>${title} (${rows.length})</b>${rows.length ? rows.map(row).join('') : '<div class="small" style="margin-top:6px">Nobody yet.</div>'}</div>`;
+}
+function drawDash(d) {
+  const l = d.licence, st = (n, t) => `<div class="stat"><b>${n}</b><span>${t}</span></div>`, now = new Date();
+  const pl = d.present_list || [], al = d.absent_list || [];
+  $app.innerHTML = `<div class="small" style="margin-bottom:8px">${esc(S.company.name)} · ${fmtDate(d.today)} · <span style="color:var(--green)">● Live</span> · updated ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
     ${l.valid ? '' : `<div class="banner bad">${esc(l.message)}</div>`}${l.valid && l.days_left !== null && l.days_left <= 7 ? `<div class="banner warn">${esc(l.message)}</div>` : ''}
     <div class="grid">${st(d.total_employees, 'Total employees')}${st(d.active_employees, 'Active employees')}${st(d.present_today, "Today's present")}${st(d.absent_today, "Today's absent")}
     ${st(d.logged_in_now, 'Currently logged in')}${st(d.completed_checkouts, 'Completed check-outs')}${st(d.missed_checkouts, 'Missed check-outs (earlier days)')}${st(d.month_attendance_days, 'Attendance days this month')}</div>
+    <div style="height:14px"></div>${d.present_list ? dashList('Present today', pl, 'present') + dashList('Not marked yet', al, 'absent') : ''}
     ${S.role === 'ADMIN' && (!l.valid || l.state === 'trial' || (l.days_left !== null && l.days_left <= 7)) ? payButton() : ''}<button class="ghost" id="rf">Refresh</button>`;
   g('rf').onclick = () => showTab('dash'); bindPay();
+}
+async function renderDash() {
+  drawDash(await call('dashboard'));
+  // live: refresh the figures and lists about every 30 seconds while this tab is open and the app is visible
+  clearInterval(S.poll);
+  S.poll = setInterval(async () => {
+    if (document.hidden || S.tab !== 'dash' || document.querySelector('.modal')) return;
+    try { const d = await call('dashboard'); if (S.tab === 'dash') { const y = window.scrollY; drawDash(d); window.scrollTo(0, y); } } catch (e) { if (e.code === 'SESSION_EXPIRED') clearInterval(S.poll); }
+  }, 30000);
 }
 
 // ---------- employees ----------
@@ -443,6 +460,15 @@ async function renderRep() {
 }
 
 // ---------- company / subscription ----------
+function changePasswordDialog() {
+  const m = modal(`<h3 style="margin:0">Change my password</h3><div id="mres"></div><label>Current password</label><input id="cp_o" type="password" autocomplete="current-password"><label>New password (6-20 letters/numbers)</label><input id="cp_n" type="password" autocomplete="new-password"><label>Repeat new password</label><input id="cp_r" type="password" autocomplete="new-password"><button id="cp_go">Save new password</button><button class="ghost" id="cp_x">Cancel</button>`);
+  m.querySelector('#cp_x').onclick = () => m.close();
+  m.querySelector('#cp_go').onclick = (ev) => busy(ev.target, 'Saving…', async () => {
+    const o = m.querySelector('#cp_o').value, n = m.querySelector('#cp_n').value, r = m.querySelector('#cp_r').value, bad = (t) => { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(t)}</div>`; };
+    if (n !== r) return bad('The two new passwords do not match.');
+    try { await call('admin_change_password', { old_pin: o, new_pin: n }); if (store.get('uid') === 'ADMIN') store.set('pin', n); m.close(); toast('Password changed. Use the new password the next time you sign in.'); } catch (e) { bad(e.message); }
+  });
+}
 async function renderCo() {
   const c = await call('company_info'), l = c.licence, admin = S.role === 'ADMIN';
   $app.innerHTML = `<div class="card"><b>${esc(c.name)}</b><div class="row"><span>Company ID</span><b>${esc(c.id)}</b></div><div class="row"><span>Administrator</span><span>${esc(c.admin_name)}</span></div>
@@ -453,8 +479,8 @@ async function renderCo() {
     <div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message)}</div>${payButton()}</div>
     ` : ''}
   ${admin ? (c.status === 'DeletionRequested' ? `<button class="ghost" id="dc">Cancel deletion request</button>` : `<button class="ghost" id="dr" style="color:var(--red)">Delete company account and data</button>`) : ''}
-  <button class="ghost" id="so">Sign out</button>${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
-  g('so').onclick = signOut; bindLegal(); bindPay();
+  ${admin ? '<button class="ghost" id="cp">Change my password</button>' : ''}<button class="ghost" id="so">Sign out</button>${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
+  g('so').onclick = signOut; bindLegal(); bindPay(); if (admin && g('cp')) g('cp').onclick = changePasswordDialog;
   if (admin && g('dr')) g('dr').onclick = deleteCompanyDialog;
   if (admin && g('dc')) g('dc').onclick = (ev) => busy(ev.target, 'Please wait…', async () => { try { await call('company_delete_cancel'); renderCo(); } catch (e) { toast(e.message); } });
 }
@@ -493,6 +519,7 @@ function ownerForm(c) {
     <label>Plan</label><select id="a_pl">${Object.keys(plans).map(k => `<option value="${esc(k)}">${esc(k)} - up to ${plans[k].limit} users</option>`).join('')}</select>
     <label>Period</label><select id="a_mo"><option value="1">1 month</option><option value="6">6 months</option><option value="12">12 months</option></select>
     <div id="a_pr" class="small" style="margin:8px 0"></div><button id="a_go">Activate plan</button></div>
+    <div class="card" style="margin:12px 0"><b>Administrator password</b><div class="small">If the company's administrator forgot the password, create a new one here and tell them. They can change it later from Company tab → Change my password.</div><button class="ghost" id="o_rp">Reset administrator password</button></div>
     <b>Manual changes</b><label>Status</label><select id="o_st">${['Trial', 'Active', 'Suspended', 'Expired'].concat(['DeletionRequested', 'Deleted'].filter(x => x === c.status)).map(s => `<option ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
     <label>Plan</label><input id="o_pl" value="${esc(c.plan)}" placeholder="Trial / Monthly / Annual / Per-employee"><label>Expiry date</label><input id="o_ex" type="date" value="${esc(c.expiry)}">
     <label>Employee limit</label><input id="o_lm" inputmode="numeric" value="${esc(c.employee_limit)}"><label>Extend by (days)</label><input id="o_xd" inputmode="numeric" placeholder="e.g. 30 or 365">
@@ -504,6 +531,10 @@ function ownerForm(c) {
     try { const r = await call('owner_activate', { company_id: c.id, plan: m.querySelector('#a_pl').value, months: m.querySelector('#a_mo').value }); m.close(); toast(`${c.name}: ${r.company.plan} plan active until ${fmtDate(r.company.expiry)}. Amount ${inr(r.price)}.`); showOwner(); }
     catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
   });
+  m.querySelector('#o_rp').onclick = (ev) => { if (!confirm('Reset the administrator password of ' + c.name + ' (' + c.id + ')? The old password stops working.')) return; busy(ev.target, 'Resetting…', async () => {
+    try { const r = await call('owner_reset_admin', { company_id: c.id }); m.querySelector('#mres').innerHTML = `<div class="banner ok"><b>New administrator password</b><div style="font-size:26px;font-weight:800;letter-spacing:2px;margin:8px 0;user-select:all">${esc(r.password)}</div><div class="small">Company ID ${esc(r.company_id)} · User ID ADMIN · give this to ${esc(r.admin_name || 'the administrator')}. It is shown only now.</div></div>`; }
+    catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+  }); };
   m.querySelector('#oc').onclick = () => m.close();
   if (m.querySelector('#opg')) m.querySelector('#opg').onclick = (ev) => { const t = prompt('This permanently deletes the company sheet, photos and reports. Type the Company ID ' + c.id + ' to confirm:'); if (!t) return; busy(ev.target, 'Deleting…', async () => { try { await call('owner_purge', { company_id: c.id, confirm: t }); m.close(); showOwner(); } catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; } }); };
   m.querySelector('#os').onclick = (ev) => busy(ev.target, 'Saving…', async () => {
