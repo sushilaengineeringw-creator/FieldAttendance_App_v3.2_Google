@@ -1,3 +1,11 @@
+## 3.4.0 - live dashboard and password recovery
+- Dashboard is now live: lists the names of who is In, who is Done (with in/out times) and who has Not marked yet, and refreshes about every 30 seconds while the tab is open. The existing totals are unchanged.
+- Owner screen: "Reset administrator password" creates a new password (shown once) and clears a typo lock-out. Old administrator password stops working at once.
+- Company tab: administrators can "Change my password" (current password required).
+- Permission messages now say Field Attendance (was VATS Attendance).
+- Backward compatible: every backend change only adds fields or actions, so staff still on v3.3 keep working with the new Code.gs; the new screens need the v3.4 app.
+- Tests: 48 pass.
+
 ## 3.3.0 - self-service selling
 - Free trial is now 10 days and limited to 5 staff (managers count).
 - One free trial per mobile number: a hashed "Mobile Key" is kept in the registry even after a company is deleted. Registering again with the same number is refused.
