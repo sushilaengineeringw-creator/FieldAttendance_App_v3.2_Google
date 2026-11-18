@@ -145,3 +145,29 @@ test('a duplicate mobile number is refused on the registration screen with a cle
   P.type('#r_co', 'Again Co'); P.type('#r_nm', 'A'); P.type('#r_mb', '+91 98123 00009'); P.type('#r_pw', 'Secret123'); P.d.querySelector('#r_ok').checked = true; P.click('#r_go');
   await until(() => P.has('already registered with this mobile number'), 'duplicate refused'); assert.ok(P.$('#r_go'), 'stays on the form');
 });
+
+test('v3.4 screens: live dashboard lists who is in / done / not marked and refreshes by itself; admin changes own password; owner resets a forgotten admin password', async () => {
+  const E = load(); E.x.setup(); const P = phone(E), PIX = 'AAAA', G = { lat: 18.5204, lng: 73.8567, accuracy: 12, loc_age_s: 3 };
+  const r = E.api({ action: 'register_start', company_name: 'Live Co', admin_name: 'Asha', mobile: '9812300077', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, mk = (n) => E.api({ action: 'emp_add', token: at, name: n, mobile: '9000000001', designation: 'Technician', department: 'Service', type: 'Technician' });
+  const a = mk('Anil In'), b = mk('Babu Done'), c = mk('Chetan Later'), lg = (e) => E.api({ action: 'login', company_id: cid, id: e.employee.id, pin: e.pin }).token;
+  const ta = lg(a), tb = lg(b), tc = lg(c);
+  E.api({ action: 'checkin', token: ta, ...G, idem: 'e1', photo: PIX }); E.api({ action: 'checkin', token: tb, ...G, idem: 'e2', photo: PIX }); E.api({ action: 'checkout', token: tb, ...G, idem: 'e2o' });
+  const timers = []; P.w.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.has('Present today (2)'), 'present list');
+  assert.ok(P.has('Not marked yet (1)') && P.has('Anil In') && P.has('Babu Done') && P.has('Chetan Later') && P.has('Live'));
+  const dash = timers.filter(t => t.ms === 30000); assert.ok(dash.length >= 1, 'the dashboard schedules a 30 second refresh');
+  E.api({ action: 'checkin', token: tc, ...G, idem: 'e3', photo: PIX });                                                          // Chetan arrives while the admin is looking
+  await dash[dash.length - 1].fn(); await until(() => P.has('Present today (3)') && P.has('Not marked yet (0)'), 'list refreshed by itself');
+  // admin changes own password in the app
+  P.click('nav [data-t="co"]'); await until(() => P.$('#cp'), 'company tab'); P.click('#cp'); await until(() => P.$('#cp_go'), 'dialog');
+  P.type('#cp_o', 'Secret123'); P.type('#cp_n', 'Brand#New9'); P.type('#cp_r', 'Mismatch1'); P.click('#cp_go'); await until(() => P.has('do not match'), 'mismatch refused');
+  P.type('#cp_r', 'Brand#New9'); P.click('#cp_go'); await until(() => P.calls.alerts.some(x => /Password changed/.test(x)), 'changed'); delete E.cache['co_' + cid];
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Brand#New9' }).ok, true);
+  // owner resets a forgotten admin password
+  P.click('#so'); await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
+  await until(() => P.has('Live Co'), 'owner list'); P.d.querySelector('[data-c="' + cid + '"]').click(); await until(() => P.$('#o_rp'), 'reset button'); P.click('#o_rp');
+  await until(() => P.has('New administrator password'), 'new password shown'); const pw = P.d.querySelector('#mres .banner div').textContent.trim(); assert.match(pw, /^[a-z2-9]{8}$/);
+  delete E.cache['co_' + cid]; assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Brand#New9' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: pw }).ok, true);
+});

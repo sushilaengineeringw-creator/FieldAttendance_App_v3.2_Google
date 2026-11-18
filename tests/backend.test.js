@@ -361,3 +361,46 @@ test('a user cannot go over the plan limit by adding people as Inactive and swit
   E.api({ action: 'emp_update', token: tok, id: 'E002', status: 'Inactive' });                                      // switch one off, then the first may come back
   assert.equal(E.api({ action: 'emp_update', token: tok, id: 'E001', status: 'Active' }).ok, true);
 });
+
+test('v3.4 owner resets a forgotten administrator password: old one stops, new one works, lock is cleared; staff are untouched; others cannot do it', () => {
+  const { E, c, tok, e1, cid } = setup2(), o = ownerTok(E);
+  for (let i = 0; i < 5; i++) E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'wrong-' + i });                    // admin locked out by typos
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: STRONG }).error, 'AUTH_LOCKED');
+  assert.equal(E.api({ action: 'owner_reset_admin', token: tok, company_id: cid }).error, 'FORBIDDEN');                       // an admin cannot use the owner action
+  const r = E.api({ action: 'owner_reset_admin', token: o, company_id: cid }); assert.equal(r.ok, true, JSON.stringify(r)); dropCache(E, cid);
+  assert.match(r.password, /^[a-z2-9]{8}$/); assert.equal(r.company_id, cid);
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: STRONG }).error, 'AUTH_BAD');                      // old password dead
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: r.password }).ok, true);                           // new works, lock cleared
+  assert.equal(empLogin(E, cid, e1.employee.id, e1.pin).ok, true);                                                             // employees unaffected
+  assert.ok(!JSON.stringify(co_(E, cid)).includes(r.password));                                                                 // stored only as a hash
+  const r2 = E.api({ action: 'owner_reset_admin', token: o, company_id: cid, password: 'Chosen#99' }); dropCache(E, cid); assert.equal(r2.password, 'Chosen#99');
+  assert.equal(E.api({ action: 'owner_reset_admin', token: o, company_id: cid, password: '123' }).error, 'BAD_REQUEST');
+  assert.equal(E.api({ action: 'owner_reset_admin', token: o, company_id: 'NOPE1' }).error, 'NO_COMPANY');
+});
+test('v3.4 an administrator can change their own password (old one required, wrong attempts are rate-limited, managers/employees cannot)', () => {
+  const { E, tok, e1, cid } = setup2();
+  assert.equal(E.api({ action: 'admin_change_password', token: tok, old_pin: 'nope', new_pin: 'Fresh#Pass2' }).error, 'PASSWORD_BAD');
+  assert.equal(E.api({ action: 'admin_change_password', token: tok, old_pin: STRONG, new_pin: '123' }).error, 'BAD_REQUEST');
+  assert.equal(E.api({ action: 'admin_change_password', token: tok, old_pin: STRONG, new_pin: 'Fresh#Pass2' }).ok, true); dropCache(E, cid);
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: STRONG }).error, 'AUTH_BAD');
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Fresh#Pass2' }).ok, true);
+  const et = empLogin(E, cid, e1.employee.id, e1.pin).token; assert.equal(E.api({ action: 'admin_change_password', token: et, old_pin: 'x', new_pin: 'Fresh#Pass3' }).error, 'FORBIDDEN');
+  const t2 = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Fresh#Pass2' }).token;
+  for (let i = 0; i < 5; i++) E.api({ action: 'admin_change_password', token: t2, old_pin: 'bad' + i, new_pin: 'Fresh#Pass4' });
+  assert.equal(E.api({ action: 'admin_change_password', token: t2, old_pin: 'Fresh#Pass2', new_pin: 'Fresh#Pass4' }).error, 'PASSWORD_LOCKED');
+});
+test('v3.4 live dashboard: names of who is in / done / not marked; the v3.3 totals are unchanged', () => {
+  const E = fresh(), c = register(E, 'live@co.com', 'LiveCo'), tok = admin(E, c.cid);
+  E.api({ action: 'owner_activate', token: ownerTok(E), company_id: c.cid, plan: 'Starter', months: 1 }); dropCache(E, c.cid);
+  const a = addEmp(E, tok, { name: 'Anil In' }), b = addEmp(E, tok, { name: 'Babu Done' }), d = addEmp(E, tok, { name: 'Chetan Absent' });
+  const ta = empLogin(E, c.cid, a.employee.id, a.pin).token, tb = empLogin(E, c.cid, b.employee.id, b.pin).token;
+  assert.equal(E.api({ action: 'checkin', token: ta, ...GOOD, idem: 'la', photo: PHOTO }).ok, true);
+  assert.equal(E.api({ action: 'checkin', token: tb, ...GOOD, idem: 'lb', photo: PHOTO }).ok, true); assert.equal(E.api({ action: 'checkout', token: tb, ...GOOD, idem: 'lbo' }).ok, true);
+  const r = E.api({ action: 'dashboard', token: tok });
+  assert.equal(r.present_today, 2); assert.equal(r.absent_today, 1); assert.equal(r.logged_in_now, 1); assert.equal(r.completed_checkouts, 1);               // v3.3 numbers are unchanged
+  const by = (n) => r.present_list.find(p => p.name === n);
+  assert.equal(by('Anil In').status, 'IN'); assert.equal(by('Anil In').out_time, ''); assert.ok(by('Anil In').in_time);
+  assert.equal(by('Babu Done').status, 'DONE'); assert.ok(by('Babu Done').out_time);
+  assert.deepEqual(r.absent_list.map(p => p.name), ['Chetan Absent']); assert.equal(r.absent_list[0].id, d.employee.id);
+  assert.ok(r.updated_at);
+});
