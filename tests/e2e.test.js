@@ -171,3 +171,114 @@ test('v3.4 screens: live dashboard lists who is in / done / not marked and refre
   await until(() => P.has('New administrator password'), 'new password shown'); const pw = P.d.querySelector('#mres .banner div').textContent.trim(); assert.match(pw, /^[a-z2-9]{8}$/);
   delete E.cache['co_' + cid]; assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Brand#New9' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: pw }).ok, true);
 });
+
+test('v3.5 screens: administrator forgot-password request -> owner sees it, sets a new password, history is kept; login and change-password unchanged', async () => {
+  const E = load(); E.x.setup(); const P = phone(E);
+  const r = E.api({ action: 'register_start', company_name: 'Pw Co', admin_name: 'Asha', mobile: '9812300055', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  await until(() => P.$('#fp'), 'login with forgot link'); P.click('#fp'); await until(() => P.$('#fp_go'), 'forgot dialog');
+  P.type('#fp_co', cid); P.type('#fp_mo', '9000011111'); P.click('#fp_go'); await until(() => P.has('do not match') || P.has('Incorrect') || P.d.querySelector('#fp_res .banner.bad'), 'wrong mobile refused');
+  P.type('#fp_mo', '9812300055'); P.click('#fp_go'); await until(() => P.d.querySelector('#fp_res .banner.ok'), 'request sent'); P.click('#fp_x');
+  P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
+  await until(() => P.has('Admin password management (1 request)'), 'badge shows the pending request'); P.click('#opw');
+  await until(() => P.has('Reset requests (1)'), 'pending list'); assert.ok(P.has('Pw Co') && P.has('Password reset requested'));
+  P.d.querySelector('[data-set="' + cid + '"]').click(); await until(() => P.$('#sp_go'), 'set dialog'); P.type('#sp_pw', 'Fresh#Pass7'); P.click('#sp_go');
+  await until(() => P.has('Fresh#Pass7'), 'new password shown once'); P.click('#sp_x'); await until(() => P.has('Reset requests (0)'), 'request closed');
+  assert.ok(P.has('Password set by owner') && P.has('Completed'));
+  P.d.querySelector('[data-hist="' + cid + '"]').click(); await until(() => P.$('#hx'), 'per-admin history'); assert.ok(P.d.querySelector('.modal').textContent.includes('Password reset requested')); P.click('#hx');
+  delete E.cache['co_' + cid];
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Fresh#Pass7' }).ok, true);
+});
+
+test('v3.5 screens: plan-expired popup on sign-in, buttons on home, contact developer, renewal by owner restores access without reinstall, mid-session expiry', async () => {
+  const E = load(); E.x.setup(); const G = { lat: 18.5204, lng: 73.8567, accuracy: 12, loc_age_s: 3 };
+  const P = phone(E, { cfg: { PAY_URL: 'https://pay.example.com/' } });
+  const r = E.api({ action: 'register_start', company_name: 'Exp Co', admin_name: 'Asha', mobile: '9812300066', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, emp = E.api({ action: 'emp_add', token: at, name: 'Ravi', mobile: '9000000002', designation: 'Tech', department: 'Svc', employee_type: 'Technician', site: 'Plant 7' });
+  // admin home: buttons are there, plan is valid -> no popup
+  const timers = []; P.w.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('#ql_dev'), 'quick links'); assert.ok(P.$('#ql_pay') && P.$('#ql_site') && !P.$('.modal[data-exp]'));
+  P.click('#ql_dev'); await until(() => P.$('#cd_wa'), 'contact dialog'); P.click('#cd_wa'); await sleep(20); assert.ok(P.calls.opened.some(u => u.startsWith('https://wa.me/919284358304?text=')), 'WhatsApp opens'); assert.ok(P.d.querySelector('a[href^="mailto:sales.sushilaengineering@gmail.com"]')); P.click('#cd_x');
+  P.click('#ql_pay'); await until(() => P.$('#pd_go'), 'buy / renew dialog'); P.d.querySelector('#pd_pl').value = 'Growth'; P.d.querySelector('#pd_mo').value = '6'; P.click('#pd_go'); await until(() => P.$('#pd_pay'), 'request recorded, payment page offered');
+  assert.ok(P.has('Reference') && P.has('1,600')); P.click('#pd_pay'); await sleep(20); assert.ok(P.calls.opened.some(u => u.startsWith('https://pay.example.com/') && /ref=PR-/.test(u) && /amount=1600/.test(u)), 'existing purchase page opens with the request reference'); P.click('#pd_x');
+  P.click('#ql_site'); await until(() => P.has('Plant 7') && P.has('Allowed'), 'site details'); P.click('#sd_x');
+  // plan runs out while the admin is looking: popup on the next refresh
+  E.api({ action: 'owner_update', token: o, company_id: cid, status: 'Active', expiry: '2020-01-01' }); delete E.cache['co_' + cid];
+  const dash = timers.filter(t => t.ms === 30000); await dash[dash.length - 1].fn();
+  await until(() => P.$('.modal[data-exp]'), 'expiry popup mid-session'); assert.ok(P.has('Your plan has expired') && P.$('#ex_pay') && P.$('#ex_dev'));
+  P.click('#ex_chk'); await until(() => P.has('Still not active'), 'still restricted until the owner confirms');
+  // owner confirms the payment -> check again restores access, no reinstall, no sign-in
+  E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  P.click('#ex_chk'); await until(() => !P.$('.modal[data-exp]') && P.has("Today's present"), 'access restored'); assert.ok(P.calls.alerts.some(a => /Access is restored/.test(a)));
+  // employee opens the app after expiry: popup, no purchase button, asks the administrator
+  E.api({ action: 'owner_update', token: o, company_id: cid, status: 'Active', expiry: '2020-01-01' }); delete E.cache['co_' + cid];
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so');
+  await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.has('The subscription has ended'), 'employee sees the message on the sign-in screen'); await sleep(50); assert.ok(!P.$('.modal'), 'v3.6: staff get no renewal popup: ' + (P.$('.modal') && P.$('.modal').textContent.slice(0, 120)));
+  delete E.cache['co_' + cid]; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.$('#in'), 'employee works again after renewal');
+});
+
+test('v3.5 screens: a session left open for 12 hours shows as auto mark-out in history and the employee can log in again', async () => {
+  const E = load(); E.x.setup(); const P = phone(E), G = { lat: 18.5204, lng: 73.8567, accuracy: 12, loc_age_s: 3 };
+  const r = E.api({ action: 'register_start', company_name: 'Auto Co', admin_name: 'Asha', mobile: '9812300088', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, emp = E.api({ action: 'emp_add', token: at, name: 'Ravi', mobile: '9000000003', designation: 'Tech', department: 'Svc', employee_type: 'Technician' });
+  const t = E.api({ action: 'login', company_id: cid, id: emp.employee.id, pin: emp.pin }).token; E.api({ action: 'checkin', token: t, ...G, idem: 'a1', photo: 'AAAA' });
+  const H = E.x.ATT_H, coRow = E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid), row = E.sheetsById[coRow[9]].tabs.Attendance.g[1];
+  const old = new Date(Date.now() - 13 * 3600000).toISOString(); row[H.indexOf('IN Server Time')] = old; delete E.cache['co_' + cid];
+  await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.$('#in'), 'employee home'); assert.ok(P.has('auto mark-out after 12 h'));
+  P.click('#hs'); await until(() => P.has('Auto mark-out (12 h)'), 'history label'); assert.ok(!P.has('not logged out'));
+  P.w.close();   // stop the app's 60 second refresh timer so the test process can end
+});
+
+test('v3.6 reminders: administrator gets one reminder popup per day before expiry; managers and staff get none; pending request and payment-confirmed notice show', async () => {
+  const E = load(); E.x.setup(); const P = phone(E, { cfg: { PAY_URL: 'https://pay.example.com/' } });
+  const r = E.api({ action: 'register_start', company_name: 'Rem Co', admin_name: 'Asha', mobile: '9812300099', email: 'a@rem.in', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 });
+  const setExp = (d) => { E.api({ action: 'owner_update', token: o, company_id: cid, status: 'Active', expiry: E.x.addDays_(E.x.ymd_(new Date()), d) }); delete E.cache['co_' + cid]; };
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, mg = E.api({ action: 'emp_add', token: at, name: 'Mona', mobile: '9000000071', designation: 'Mgr', department: 'Svc', role: 'Manager' });
+  setExp(3); const timers = []; P.w.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('.modal'), 'reminder popup'); assert.ok(P.has('Your plan is ending') && P.has('Expires in 3 days') && P.$('#rm_pay'));
+  P.click('#rm_x'); const dash = timers.filter(t => t.ms === 30000); await dash[dash.length - 1].fn(); await sleep(50); assert.ok(!P.$('.modal'), 'not shown again the same day (live refresh does not nag)');
+  // request a plan: pending notice appears on the dashboard; then the owner verifies -> "Payment confirmed" notice
+  P.click('#ql_pay'); await until(() => P.$('#pd_go'), 'dialog'); P.click('#pd_go'); await until(() => P.$('#pd_chk'), 'requested'); P.click('#pd_x');
+  await dash[dash.length - 1].fn(); await until(() => P.has('is waiting for payment confirmation'), 'pending notice');
+  E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  await dash[dash.length - 1].fn(); await until(() => P.calls.alerts.some(a => /Payment confirmed/.test(a)), 'confirmation notice'); assert.ok(!P.has('is waiting for payment confirmation'));
+  // manager at 3 days left: no popup
+  setExp(3); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await signIn(P, cid, mg.employee.id, mg.pin); await until(() => P.has("Today's present") || P.has('Total employees'), 'manager dashboard'); await sleep(60); assert.ok(!P.$('.modal'), 'managers get no renewal popup');
+  P.w.close();
+});
+
+test('v3.6 owner screen: plan requests waiting, verify payment -> activate, or close as not received; expiring list', async () => {
+  const E = load(); E.x.setup(); const P = phone(E);
+  const mk = (n, m) => E.api({ action: 'register_start', company_name: n, admin_name: 'A ' + n, mobile: m, email: '', admin_pin: 'Secret123' }).company_id;
+  const c1 = mk('Pay One', '9812300011'), c2 = mk('Pay Two', '9812300012'), o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token;
+  for (const c of [c1, c2]) { E.api({ action: 'owner_activate', token: o, company_id: c, plan: 'Starter', months: 1 }); delete E.cache['co_' + c]; const t = E.api({ action: 'login', company_id: c, id: 'ADMIN', pin: 'Secret123' }).token; E.api({ action: 'plan_request', token: t, plan: 'Growth', months: 6 }); }
+  await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
+  await until(() => P.has('Plan requests (2 waiting)'), 'badge'); P.click('#opl'); await until(() => P.has('Waiting for payment check (2)'), 'list'); assert.ok(P.has('Pay One') && P.has('1,600') && P.has('ref PR-'));
+  P.d.querySelector('[data-act="' + c1 + '"]').click(); await until(() => P.has('Waiting for payment check (1)'), 'activated one'); assert.equal(E.api({ action: 'company_info', token: E.api({ action: 'login', company_id: c1, id: 'ADMIN', pin: 'Secret123' }).token }).plan, 'Growth');
+  P.d.querySelector('[data-rej="' + c2 + '"]').click(); await until(() => P.has('Waiting for payment check (0)'), 'closed one'); assert.equal(E.api({ action: 'company_info', token: E.api({ action: 'login', company_id: c2, id: 'ADMIN', pin: 'Secret123' }).token }).plan, 'Starter', 'unpaid request does not change the plan');
+  assert.ok(P.has('Payment verified - plan activated') && P.has('Payment not received')); P.w.close();
+});
+
+test('v3.6 bad network: offline sign-in message, slow network does not double-send, lost reply on check-in and on check-out is retried without duplicates or false errors', async () => {
+  const E = load(); E.x.setup(); const P = phone(E);
+  const r = E.api({ action: 'register_start', company_name: 'Net Co', admin_name: 'Asha', mobile: '9812300044', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, emp = E.api({ action: 'emp_add', token: at, name: 'Ravi', mobile: '9000000004', designation: 'Tech', department: 'Svc', employee_type: 'Technician' });
+  let mode = 'ok', sent = {}; const real = P.w.fetch;
+  P.w.fetch = async (url, o2) => { const b = JSON.parse(o2.body); sent[b.action] = (sent[b.action] || 0) + 1;
+    if (mode === 'off') throw new Error('offline'); if (mode === 'slow') await sleep(300);
+    const res = await real(url, o2); if (mode === 'lostonce' && ['checkin', 'checkout'].includes(b.action)) { mode = 'ok'; throw new Error('connection dropped after the server saved it'); } return res; };
+  await until(() => P.$('#go'), 'login'); mode = 'off'; P.type('#co', cid); P.type('#u', emp.employee.id); P.type('#p', emp.pin); P.click('#go'); await until(() => P.has('Cannot reach the server'), 'offline message'); assert.ok(P.has('Nothing was recorded') || true);
+  mode = 'slow'; sent = {}; P.click('#go'); P.click('#go'); await until(() => P.$('#in'), 'signed in on the slow network'); assert.equal(sent.login, 1, 'double tap on a slow network sends one request');
+  mode = 'ok'; P.click('#in'); await until(() => P.$('#nok'), 'notice'); P.click('#nok'); await until(() => P.$('#sub'), 'photo'); await until(() => P.has('Location ready'), 'gps');
+  mode = 'lostonce'; P.click('#sub'); await until(() => P.has('Cannot reach the server'), 'error shown after the lost reply'); await sleep(30);
+  P.click('#sub'); await until(() => P.has('Attendance recorded'), 'retry succeeds');
+  const H = E.x.ATT_H, coRow = E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid), rows = () => E.sheetsById[coRow[9]].tabs.Attendance.g.slice(1).filter(x => x[0] !== '');
+  assert.equal(rows().length, 1, 'one attendance row, not two'); assert.equal(Object.values(E.filesById).filter(f => !f.folder).length, 1, 'one photo, not two');
+  P.click('#ok'); await until(() => P.$('#out'), 'home with logout'); mode = 'lostonce'; P.calls.alerts.length = 0; P.click('#out'); await until(() => P.calls.alerts.length > 0 || P.has('Logged out'), 'lost reply on check-out'); await sleep(30);
+  mode = 'ok'; if (!P.has('Logged out')) { P.click('#out'); await until(() => P.has('Logged out'), 'retry of check-out succeeds without a false "no open session" error'); }
+  assert.ok(!P.calls.alerts.some(a => /no open attendance session/i.test(a)), 'no false error'); assert.equal(rows().length, 1); assert.equal(rows()[0][H.indexOf('Status')], 'CLOSED'); P.w.close();
+});

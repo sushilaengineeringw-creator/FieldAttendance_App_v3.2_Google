@@ -9,7 +9,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal(e.reason && e.rea
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
 const serverUrl = () => (store.get('server_url') || window.APP_CONFIG.SERVER_URL).trim();
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.6';
 const cfgUrl = (k) => { const v = String((window.APP_CONFIG && window.APP_CONFIG[k]) || '').trim(); return /^https:\/\//.test(v) ? v : ''; };
 const cap = window.Capacitor;
 const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
@@ -37,7 +37,7 @@ async function rawCall(action, payload = {}) {
   if (data.ok) return data;
   throw new ApiError(data.message || 'Request failed', data.error, data);
 }
-function applyLogin(r) { S.token = r.token; S.role = r.role; S.user = r.user || null; S.company = r.company || null; }
+function applyLogin(r) { S.expShown = null; S.token = r.token; S.role = r.role; S.user = r.user || null; S.company = r.company || null; }
 async function relogin() {
   const co = store.get('co'), id = store.get('uid'), pin = store.get('pin');
   if (!co || !id || !pin) throw new ApiError('Please sign in again.', 'SESSION_EXPIRED');
@@ -52,7 +52,7 @@ async function call(action, payload = {}) {
     throw e;
   }
 }
-function authFailed(e) { if (e.code === 'NETWORK' || e.code === 'BAD_REPLY') throw e; stopTimers(); store.del('pin'); S.token = null; showLogin(e.message); throw e; }
+function authFailed(e) { if (e.code === 'NETWORK' || e.code === 'BAD_REPLY') throw e; stopTimers(); store.del('pin'); S.token = null; showLogin(e.message); if (isLicence(e)) expiryPopup(e); throw e; }
 const serverNow = () => new Date(Date.now() + S.offset);
 const fmtDate = (d) => { const [y, m, dd] = String(d).split('-'); return `${dd}/${m}/${y}`; };
 const dur = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return String(Math.floor(m / 60)).padStart(2, '0') + 'h ' + String(m % 60).padStart(2, '0') + 'm'; };
@@ -70,6 +70,121 @@ const payButton = (id) => payUrl() ? `<button id="${id || 'pay'}">Choose a plan 
 function bindPay(root, id) { const b = (root || $app).querySelector('#' + (id || 'pay')); if (b) b.onclick = () => openUrl(payUrl(S.company && S.company.id)); }
 const isLicence = (e) => /^LICENCE_/.test((e && e.code) || '');
 function licenceBlock(e) { return `<div class="card"><div class="banner bad">${esc(e.message)}</div>${S.role === 'ADMIN' ? payButton() : '<div class="small">Please ask your company administrator.</div>'}</div>`; }
+// ---------------- v3.5: developer contact, site details, expiry popup ----------------
+const adminCtx = () => S.role === 'ADMIN' || (!S.role && store.get('uid') === 'ADMIN');
+const DEV = () => { const c = window.APP_CONFIG || {}; return { wa: String(c.DEV_WHATSAPP || '919284358304').replace(/\D/g, ''), mail: String(c.DEV_EMAIL || 'sales.sushilaengineering@gmail.com').trim() }; };
+const curLicence = () => (S.me && S.me.company && S.me.company.licence) || (S.company && S.company.licence) || null;
+function contactDeveloper(topic) {
+  const d = DEV(), l = curLicence() || {}, u = S.user || {};
+  const text = `Hello, I need help with the Field Attendance App.\nTopic: ${topic || 'Subscription / support'}\nCompany: ${(S.company && S.company.name) || ''} (${(S.company && S.company.id) || store.get('co') || ''})\nUser: ${u.id || store.get('uid') || ''}\nPlan status: ${l.state || ''}${l.expiry ? ' (expiry ' + l.expiry + ')' : ''}`;
+  const m = modal(`<h3 style="margin:0 0 6px">Contact app developer</h3><div class="small">For subscription, renewal, payment help or any support. Sushila Engineering Works, Jalgaon.</div>
+    <button id="cd_wa">Chat on WhatsApp</button><a href="mailto:${esc(d.mail)}?subject=${encodeURIComponent('Field Attendance App - support')}&body=${encodeURIComponent(text)}" style="display:block;text-align:center;margin-top:10px"><button class="ghost" type="button" style="margin:0">Email ${esc(d.mail)}</button></a>
+    <button class="ghost" id="cd_x">Close</button>`);
+  m.querySelector('#cd_wa').onclick = () => openUrl('https://wa.me/' + d.wa + '?text=' + encodeURIComponent(text));
+  m.querySelector('#cd_x').onclick = () => m.close();
+}
+async function siteDetails() {
+  const m = modal('<h3 style="margin:0 0 6px">Site details</h3><div id="sd" class="small">Loading…</div><button class="ghost" id="sd_x">Close</button>');
+  m.querySelector('#sd_x').onclick = () => m.close();
+  const row = (a, b) => `<div class="row"><span>${esc(a)}</span><span>${b}</span></div>`;
+  let l = curLicence() || {}, c = S.company || {}, extra = '';
+  try {
+    if (S.role === 'ADMIN') { const ci = await call('company_info'); l = ci.licence; extra = row('User limit', esc(ci.employee_limit)); }
+    else { const me = await call('me'); S.me = me; l = me.company.licence; }
+    if (S.role === 'EMPLOYEE') extra += row('Assigned site', esc((S.user && S.user.site) || '—'));
+    else if (S.role === 'ADMIN' || S.role === 'MANAGER') {
+      let emps = S.emps; if (!emps) { try { emps = (await call('emp_list')).employees; S.emps = emps; } catch { emps = []; } }
+      const cnt = {}; emps.forEach(e => { if (e.site) cnt[e.site] = (cnt[e.site] || 0) + 1; });
+      const names = Object.keys(cnt).sort(); extra += row('Sites in use', names.length ? names.map(n => esc(n) + ' <span class="small">(' + cnt[n] + ')</span>').join('<br>') : '—');
+    }
+  } catch (e) { if (!isLicence(e)) { const el = m.querySelector('#sd'); if (el) el.innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; return; } l = (e.data && e.data.licence) || l; }
+  const el = m.querySelector('#sd'); if (!el) return;
+  const rl = { ADMIN: 'Company administrator', MANAGER: 'Manager', EMPLOYEE: 'Employee' }[S.role] || '';
+  el.innerHTML = row('Company', esc(c.name || '—')) + row('Company ID', esc(c.id || '—')) + row('Your role', esc(rl)) + row('Plan', esc(l.plan || '—')) + row('Status', esc(l.state || '—')) + row('Expiry date', esc(l.expiry || '—')) + row('Days left', l.days_left ?? '—') + extra +
+    row('Access', l.valid ? '<b style="color:var(--green)">Allowed</b>' : '<b style="color:var(--red)">Restricted - plan not active</b>') + `<div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message || '')}</div>`;
+}
+function quickLinks() {
+  const pay = S.role === 'ADMIN' && payUrl() ? '<button id="ql_pay">Buy / renew plan</button>' : '';
+  return `<div class="card" style="margin-top:12px"><b>Plan & help</b>${pay}<button class="ghost" id="ql_site">Site details</button><button class="ghost" id="ql_dev">Contact app developer</button></div>`;
+}
+function bindQuick() {
+  if (g('ql_pay')) g('ql_pay').onclick = planDialog;
+  if (g('ql_site')) g('ql_site').onclick = siteDetails; if (g('ql_dev')) g('ql_dev').onclick = () => contactDeveloper();
+}
+// Popup shown when the plan has expired (on app open, on sign-in, or while the app is in use). Access stays restricted by the server until the Owner confirms the payment; then "check again" (or the next refresh) restores it - no reinstall.
+function expiryPopup(src, opt) {
+  opt = opt || {};
+  const lic = (src && src.data && src.data.licence) || (src && src.state ? src : null) || { state: String((src && src.code) || '').replace('LICENCE_', '').toLowerCase(), message: (src && src.message) || 'Your plan is not active.' };
+  const key = (lic.state || '') + '|' + (lic.message || '');
+  if (!adminCtx()) return;   // v3.6: only the administrator gets the renewal popup; staff see a quiet banner / message instead
+  if (document.querySelector('.modal[data-exp]')) return;
+  if (!opt.force && S.expShown === key) return;
+  const cid = (S.company && S.company.id) || store.get('co') || '', dk = 'exp_' + cid; if (!opt.force && store.get(dk) === todayIST()) return;   // at most once a day
+  S.expShown = key; store.set(dk, todayIST());
+  const trial = /trial/i.test(lic.message || ''), admin = S.role === 'ADMIN';
+  const title = lic.state === 'suspended' ? 'Subscription suspended' : lic.state === 'expired' ? (trial ? 'Your free trial has ended' : 'Your plan has expired') : 'Subscription not active';
+  const m = modal(`<h3 style="margin:0 0 6px;color:var(--red)">${esc(title)}</h3><div class="banner bad">${esc(lic.message || '')}</div>${lic.expiry ? `<div class="row"><span>Expiry date</span><b>${esc(lic.expiry)}</b></div>` : ''}
+    <div class="small" style="margin-top:8px">${admin ? 'Renew your plan to switch attendance and reports back on. Your records are kept.' : 'Please ask your company administrator to renew the plan.'}</div>
+    ${admin && payUrl() ? '<button id="ex_pay">Renew plan</button>' : ''}<button class="ghost" id="ex_dev">Contact app developer</button>
+    ${S.token ? '<button class="ghost" id="ex_chk">I have renewed - check again</button>' : ''}<div id="ex_msg" class="small" style="margin-top:8px"></div><button class="ghost" id="ex_x">Close</button>`);
+  m.setAttribute('data-exp', '1');
+  const q = (i) => m.querySelector(i);
+  if (q('#ex_pay')) q('#ex_pay').onclick = () => { m.close(); planDialog(); };
+  q('#ex_dev').onclick = () => contactDeveloper('Plan expired / renewal');
+  q('#ex_x').onclick = () => m.close();
+  if (q('#ex_chk')) q('#ex_chk').onclick = (ev) => busy(ev.target, 'Checking…', async () => {
+    try {
+      const ok = await licenceNowValid();
+      if (ok) { S.expShown = null; m.close(); toast('Your plan is active. Access is restored.'); goHome(); } else q('#ex_msg').textContent = 'Still not active. After you pay, the app owner confirms the payment - then tap this button again.';
+    } catch (e) { q('#ex_msg').textContent = isLicence(e) ? 'Still not active. After you pay, the app owner confirms the payment - then tap this button again.' : e.message; }
+  });
+}
+async function licenceNowValid() {
+  if (S.role === 'ADMIN') return !!(await call('company_info')).licence.valid;
+  const me = await call('me'); S.me = me; return !!me.company.licence.valid;
+}
+// Reminder BEFORE the plan ends: administrator only, at 7 / 3 / 1 days and on the last day, each at most once per day. Staff and managers never get this popup.
+function reminderPopup(l) {
+  if (!adminCtx() || !l || !l.valid || l.days_left === null || l.days_left > 7 || document.querySelector('.modal')) return;
+  const bucket = l.days_left <= 0 ? 0 : l.days_left <= 1 ? 1 : l.days_left <= 3 ? 3 : 7, cid = (S.company && S.company.id) || '', k = 'rem_' + cid, mark = bucket + '|' + todayIST();
+  if (store.get(k) === mark) return; store.set(k, mark);
+  const m = modal(`<h3 style="margin:0 0 6px">${l.state === 'trial' ? 'Your free trial is ending' : 'Your plan is ending'}</h3><div class="banner warn">${l.days_left <= 0 ? 'Expires today' : 'Expires in ' + l.days_left + ' day' + (l.days_left === 1 ? '' : 's')} (${esc(l.expiry || '')}).</div>
+    <div class="small" style="margin-top:8px">Renew now so attendance does not stop. All your records are kept.</div>${payUrl() ? '<button id="rm_pay">Renew plan</button>' : ''}<button class="ghost" id="rm_dev">Contact app developer</button><button class="ghost" id="rm_x">Remind me later</button>`);
+  if (m.querySelector('#rm_pay')) m.querySelector('#rm_pay').onclick = () => { m.close(); planDialog(); };
+  m.querySelector('#rm_dev').onclick = () => contactDeveloper('Plan renewal'); m.querySelector('#rm_x').onclick = () => m.close();
+}
+function adminReminders(l) { if (!adminCtx()) return; if (l.valid) { closeExpiryPopup(); reminderPopup(l); } else expiryPopup(l); }
+// Buy / renew: the administrator picks a plan, the request is recorded for the developer, then pays outside the app (payment page / UPI). The plan is activated only after the developer has verified the payment.
+async function planDialog() {
+  const m = modal('<h3 style="margin:0 0 6px">Buy or renew plan</h3><div id="pd" class="small">Loading…</div>');
+  const body = (h) => { m.querySelector('#pd').innerHTML = h + '<button class="ghost" id="pd_x">Close</button>'; m.querySelector('#pd_x').onclick = () => m.close(); };
+  const inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
+  const show = (rq, note) => {
+    body(`${note ? `<div class="banner ok">${esc(note)}</div>` : ''}<div class="card"><div class="row"><span>Reference</span><b>${esc(rq.ref)}</b></div><div class="row"><span>Plan</span><span>${esc(rq.plan)} · ${rq.months} month${rq.months === 1 ? '' : 's'}</span></div><div class="row"><span>Amount to pay</span><b>${inr(rq.amount)}</b></div></div>
+      <div class="small">Pay ${inr(rq.amount)} and quote <b>${esc(rq.ref)}</b>. Your plan is activated after the developer has verified the payment - you do not need to do anything else.</div>
+      ${payUrl() ? '<button id="pd_pay">Open payment page</button>' : ''}<button class="ghost" id="pd_wa">Send payment details to developer</button><button class="ghost" id="pd_chk">Check status</button><div id="pd_msg" class="small" style="margin-top:8px"></div>`);
+    const q = (i) => m.querySelector(i);
+    if (q('#pd_pay')) q('#pd_pay').onclick = () => { let u = payUrl(S.company && S.company.id); try { const x = new URL(u); x.searchParams.set('ref', rq.ref); x.searchParams.set('amount', rq.amount); u = x.toString(); } catch {} openUrl(u); };
+    q('#pd_wa').onclick = () => contactDeveloper('Payment for request ' + rq.ref + ' - ' + rq.plan + ' ' + rq.months + ' month(s) - Rs ' + rq.amount);
+    q('#pd_chk').onclick = (ev) => busy(ev.target, 'Checking…', async () => { try { const ci = await call('company_info'); if (ci.licence.valid && !ci.plan_request) { m.close(); toast('Payment confirmed. Your plan is active until ' + fmtDate(ci.expiry) + '.'); goHome(); } else q('#pd_msg').textContent = ci.plan_request ? 'Waiting for the developer to verify your payment.' : 'No open request.'; } catch (e) { q('#pd_msg').textContent = e.message; } });
+  };
+  try {
+    const ci = await call('company_info'); if (ci.plan_request) return show(ci.plan_request, 'You already have an open request.');
+    const plans = ci.plans || {};
+    body(`<div class="row"><span>Current plan</span><span>${esc(ci.plan)} · ${esc(ci.licence.state)}</span></div><div class="row"><span>Expiry</span><span>${esc(ci.expiry || '—')}</span></div><div id="pd_err"></div>
+      <label>Plan</label><select id="pd_pl">${Object.keys(plans).map(k => `<option value="${esc(k)}">${esc(k)} - up to ${plans[k].limit} users</option>`).join('')}</select><label>Period</label><select id="pd_mo"><option value="1">1 month</option><option value="6">6 months</option><option value="12">12 months</option></select>
+      <div id="pd_pr" class="small" style="margin:8px 0"></div><button id="pd_go">Send request</button>`);
+    const upd = () => { const p = plans[m.querySelector('#pd_pl').value]; m.querySelector('#pd_pr').textContent = p ? 'Amount: ' + inr(p.price[m.querySelector('#pd_mo').value]) : ''; };
+    m.querySelector('#pd_pl').onchange = upd; m.querySelector('#pd_mo').onchange = upd; upd();
+    m.querySelector('#pd_go').onclick = (ev) => busy(ev.target, 'Sending…', async () => {
+      try { const r = await call('plan_request', { plan: m.querySelector('#pd_pl').value, months: m.querySelector('#pd_mo').value }); show(r.request, r.message); }
+      catch (e) { m.querySelector('#pd_err').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+    });
+  } catch (e) { body(`<div class="banner bad">${esc(e.message)}</div>`); }
+}
+function pendingBanner(rq) { return rq ? `<div class="banner warn">Plan request <b>${esc(rq.ref)}</b> (${esc(rq.plan)}, ${rq.months} month${rq.months === 1 ? '' : 's'}, ₹${Number(rq.amount).toLocaleString('en-IN')}) is waiting for payment confirmation.</div>` : ''; }
+function closeExpiryPopup() { const x = document.querySelector('.modal[data-exp]'); if (x) x.remove(); S.expShown = null; }
+function fmtWhen(t) { const d = new Date(t); return isNaN(d) ? esc(t) : esc(d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })); }
 function setHeader(who) { g('who').textContent = who || ''; }
 function busy(btn, text, fn) { const old = btn.textContent; btn.disabled = true; btn.textContent = text; return Promise.resolve().then(fn).finally(() => { if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = old; } }); }
 function toast(m, bad) { alert((bad ? '' : '') + m); }
@@ -83,19 +198,30 @@ function showLogin(msg) {
     <label>Company ID</label><input id="co" autocapitalize="characters" value="${esc(store.get('co') || '')}">
     <label>User ID <span class="small">(Employee ID, or ADMIN for the company administrator)</span></label><input id="u" autocapitalize="characters" autocomplete="username" value="${esc(store.get('uid') === 'OWNER' ? '' : (store.get('uid') || ''))}">
     <label>PIN / Password</label><input id="p" type="password" autocomplete="current-password">
-    <button id="go">Sign in</button><div id="err" class="banner bad hidden" style="margin-top:12px"></div></div>
+    <button id="go">Sign in</button><div id="err" class="banner bad hidden" style="margin-top:12px"></div><div style="text-align:center;margin-top:12px"><a href="#" id="fp" class="small">Administrator forgot password?</a></div></div>
     <button class="ghost" id="reg">Register your company</button>
     <div style="text-align:center;margin-top:18px"><a href="#" id="own" class="small">Owner sign-in</a></div>
     ${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
-  bindLegal(); g('reg').onclick = showRegister; g('own').onclick = (e) => { e.preventDefault(); showOwnerLogin(); };
+  bindLegal(); g('fp').onclick = (e) => { e.preventDefault(); forgotDialog(); }; g('reg').onclick = showRegister; g('own').onclick = (e) => { e.preventDefault(); showOwnerLogin(); };
   g('go').onclick = async () => {
     const b = g('go'), err = g('err'); err.classList.add('hidden');
     const co = val('co').toUpperCase(), id = val('u').toUpperCase(), pin = val('p');
     await busy(b, 'Signing in…', async () => {
       try { const r = await rawCall('login', { company_id: co, id, pin }); applyLogin(r); store.set('co', co); store.set('uid', id); store.set('pin', pin); goHome(); }
-      catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
+      catch (e) { err.textContent = e.message; err.classList.remove('hidden'); if (isLicence(e) && id === 'ADMIN') expiryPopup(e, { force: true }); }
     });
   };
+}
+function forgotDialog() {
+  const m = modal(`<h3 style="margin:0 0 6px">Administrator forgot password</h3><div class="small">Only the company administrator. Enter your Company ID and the mobile number you registered with. The app owner will set a new password and tell you.</div><div id="fp_res"></div>
+    <label>Company ID</label><input id="fp_co" autocapitalize="characters" value="${esc(store.get('co') && store.get('co') !== 'OWNER' ? store.get('co') : '')}"><label>Registered mobile number</label><input id="fp_mo" inputmode="tel">
+    <button id="fp_go">Send request to owner</button><button class="ghost" id="fp_x">Close</button>`);
+  m.querySelector('#fp_x').onclick = () => m.close();
+  m.querySelector('#fp_go').onclick = (ev) => busy(ev.target, 'Sending…', async () => {
+    const res = m.querySelector('#fp_res');
+    try { const r = await rawCall('admin_forgot_request', { company_id: m.querySelector('#fp_co').value.trim().toUpperCase(), mobile: m.querySelector('#fp_mo').value.trim() }); res.innerHTML = `<div class="banner ok">${esc(r.message || 'Request sent.')}</div>`; }
+    catch (e) { res.innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+  });
 }
 function showRegister(msg) {
   $app.innerHTML = `<div class="card"><h2 style="margin:0 0 4px">Register your company</h2><div class="small">Free 10-day trial for up to 5 staff. No Google account needed. Fill in the details and you can start in a minute.</div>
@@ -254,7 +380,9 @@ async function doCheckOut() {
   const b = document.getElementById('out'); b.disabled = true; b.textContent = 'Getting your location…';
   try {
     const loc = await getLocation(); b.textContent = 'Submitting…';
-    showResult('Logged out', await call('checkout', { ...loc, idem: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) }));
+    const rr = await call('checkout', { ...loc, idem: 'out-' + ((S.me && S.me.open_session && S.me.open_session.ref) || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))) });   // one key per session: a retry after a lost reply is recognised, not shown as an error
+    if (rr.auto) { alert(rr.message || 'Your session was marked out automatically after 12 hours.'); return goHome(); }
+    showResult('Logged out', rr);
   } catch (e) { alert(e.message); b.disabled = false; b.textContent = 'LOG OUT / CHECK OUT'; }
 }
 
@@ -272,7 +400,7 @@ function showResult(title, r, img) {
 async function showHistory() {
   try {
     const { sessions } = await call('history');
-    $app.innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Attendance history</h3>${sessions.map(s => `<div class="hist"><b>${fmtDate(s.date)}</b> &nbsp; IN ${esc(s.in_time)} → ${s.out_time ? 'OUT ' + esc(s.out_time) + ' (' + esc(s.duration) + ')' : '<span style="color:#b7791f">not logged out</span>'}<br><span class="small">${esc(s.site || '')} · ${esc(s.ref)}</span></div>`).join('') || '<div class="small">No records yet.</div>'}</div><button class="ghost" id="bk">Back</button>`;
+    $app.innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Attendance history</h3>${sessions.map(s => `<div class="hist"><b>${fmtDate(s.date)}</b> &nbsp; IN ${esc(s.in_time)} → ${s.out_time ? 'OUT ' + esc(s.out_time) + ' (' + esc(s.duration) + ')' + (s.auto_out ? ' <span class="chip">Auto mark-out (12 h)</span>' : '') : '<span style="color:#b7791f">not logged out</span>'}<br><span class="small">${esc(s.site || '')} · ${esc(s.ref)}</span></div>`).join('') || '<div class="small">No records yet.</div>'}</div><button class="ghost" id="bk">Back</button>`;
     g('bk').onclick = goHome;
   } catch (e) { toast(e.message); }
 }
@@ -290,7 +418,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && S.
 // ---------------- employee home (kept as simple as v2.5) ----------------
 async function loadEmployee() {
   try { S.me = await call('me'); } catch (e) { if (e.code === 'NETWORK' || e.code === 'BAD_REPLY') return showOffline(e.message); return; }
-  clearInterval(S.poll); S.poll = setInterval(refreshMe, 60000); renderEmployee();
+  clearInterval(S.poll); S.poll = setInterval(() => { if (!document.hidden) refreshMe(); }, 120000); renderEmployee();   // v3.6: every 2 minutes and never while the app is in the background (fewer calls, less battery / data)
 }
 async function refreshMe() { try { S.me = await call('me'); if (!flow && S.role === 'EMPLOYEE' && g('hs')) renderEmployee(); } catch {} }
 function showOffline(m) { $app.innerHTML = `<div class="card"><div class="banner bad">${esc(m)}</div><button id="rt">Retry</button></div>`; g('rt').onclick = goHome; }
@@ -302,7 +430,7 @@ function renderEmployee() {
     status = `<div class="banner ok">Checked in at <b>${esc(o.in_time)}</b> — ${esc(o.site || '')}</div><div class="timer" id="tm"></div>`;
     action = `<button class="red big" id="out">LOGOUT</button>`;
   } else if (last && last.out_time) {
-    status = `<div class="banner ok">Today: IN ${esc(last.in_time)} → OUT ${esc(last.out_time)} · Working hours ${esc(last.duration || '')}</div>`;
+    status = `<div class="banner ok">Today: IN ${esc(last.in_time)} → OUT ${esc(last.out_time)}${last.auto_out ? ' (auto mark-out after 12 h)' : ''} · Working hours ${esc(last.duration || '')}</div>`;
     action = `<button class="green big" id="in">LOGIN AGAIN</button>`;
   } else { status = `<div class="banner warn">Attendance not marked today.</div>`; action = `<button class="green big" id="in">LOGIN (MARK ATTENDANCE)</button>`; }
   $app.innerHTML = `<div class="card"><div style="font-size:20px;font-weight:700">${esc(e.name)}</div><div class="small">${esc(c.name)}</div>
@@ -310,12 +438,14 @@ function renderEmployee() {
     <div class="row"><span>Department</span><span>${esc(e.department || '—')}</span></div><div class="row"><span>Assigned site</span><span>${esc(e.site || '—')}</span></div>
     <div class="row"><span>Today</span><span>${fmtDate(todayIST())}</span></div></div>
     <div class="banner ${l.state === 'trial' ? 'warn' : 'ok'}">${esc(l.message)}</div>${status}${action}
-    <button class="ghost" id="hs">Attendance history</button><button class="ghost" id="lo">Sign out</button>
+    ${quickLinks()}<button class="ghost" id="hs">Attendance history</button><button class="ghost" id="lo">Sign out</button>
     <div class="small" style="margin-top:12px;text-align:center">Your photo and GPS location are recorded at login, and GPS location at logout, for attendance purposes only.</div>
     <div class="small" style="margin-top:8px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
   if (o) { const tick = () => { if (g('tm')) g('tm').textContent = dur(serverNow() - new Date(o.in_ts)); }; tick(); clearInterval(S.timer); S.timer = setInterval(tick, 20000); }
   if (g('in')) g('in').onclick = () => needNotice(startCheckIn); if (g('out')) g('out').onclick = doCheckOut;
-  g('hs').onclick = showHistory; g('lo').onclick = signOut;
+  g('hs').onclick = showHistory; g('lo').onclick = signOut; bindQuick();
+  if (l.valid) closeExpiryPopup();   // staff: the banner above says what is wrong; no popup
+  if (o && serverNow() - new Date(o.in_ts) >= 12 * 3600000 && S.autoChk !== o.in_ts) { S.autoChk = o.in_ts; refreshMe(); }   // 12 h passed: the server closes the session when it is read
 }
 
 // ---------------- admin / manager shell ----------------
@@ -325,7 +455,7 @@ function showTab(id) {
   $nav.innerHTML = '<nav>' + TABS.map(([k, ic, nm]) => `<button data-t="${k}" class="${k === id ? 'on' : ''}"><i>${ic}</i>${nm}</button>`).join('') + '</nav>';
   $nav.querySelectorAll('button').forEach(b => { b.onclick = () => showTab(b.dataset.t); });
   $app.innerHTML = '<div class="small" style="text-align:center;padding:30px">Loading…</div>';
-  ({ dash: renderDash, emps: renderEmps, loc: renderLoc, rep: renderRep, co: renderCo })[id]().catch((e) => { if (isLicence(e)) { $app.innerHTML = licenceBlock(e); bindPay(); return; } if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button id="rt">Retry</button>`; if (g('rt')) g('rt').onclick = () => showTab(id); });
+  ({ dash: renderDash, emps: renderEmps, loc: renderLoc, rep: renderRep, co: renderCo })[id]().catch((e) => { if (isLicence(e)) { $app.innerHTML = licenceBlock(e) + quickLinks(); bindPay(); bindQuick(); expiryPopup(e); return; } if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button id="rt">Retry</button>`; if (g('rt')) g('rt').onclick = () => showTab(id); });
 }
 function dashList(title, rows, kind) {
   const hm = (t) => esc(String(t || '').slice(0, 5));
@@ -338,19 +468,21 @@ function drawDash(d) {
   const l = d.licence, st = (n, t) => `<div class="stat"><b>${n}</b><span>${t}</span></div>`, now = new Date();
   const pl = d.present_list || [], al = d.absent_list || [];
   $app.innerHTML = `<div class="small" style="margin-bottom:8px">${esc(S.company.name)} · ${fmtDate(d.today)} · <span style="color:var(--green)">● Live</span> · updated ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-    ${l.valid ? '' : `<div class="banner bad">${esc(l.message)}</div>`}${l.valid && l.days_left !== null && l.days_left <= 7 ? `<div class="banner warn">${esc(l.message)}</div>` : ''}
+    ${S.role === 'ADMIN' ? pendingBanner(d.plan_request) : ''}${l.valid ? '' : `<div class="banner bad">${esc(l.message)}</div>`}${l.valid && l.days_left !== null && l.days_left <= 7 ? `<div class="banner warn">${esc(l.message)}</div>` : ''}
     <div class="grid">${st(d.total_employees, 'Total employees')}${st(d.active_employees, 'Active employees')}${st(d.present_today, "Today's present")}${st(d.absent_today, "Today's absent")}
     ${st(d.logged_in_now, 'Currently logged in')}${st(d.completed_checkouts, 'Completed check-outs')}${st(d.missed_checkouts, 'Missed check-outs (earlier days)')}${st(d.month_attendance_days, 'Attendance days this month')}</div>
     <div style="height:14px"></div>${d.present_list ? dashList('Present today', pl, 'present') + dashList('Not marked yet', al, 'absent') : ''}
-    ${S.role === 'ADMIN' && (!l.valid || l.state === 'trial' || (l.days_left !== null && l.days_left <= 7)) ? payButton() : ''}<button class="ghost" id="rf">Refresh</button>`;
-  g('rf').onclick = () => showTab('dash'); bindPay();
+    ${S.role === 'ADMIN' && (!l.valid || l.state === 'trial' || (l.days_left !== null && l.days_left <= 7)) ? payButton() : ''}${quickLinks()}<button class="ghost" id="rf">Refresh</button>`;
+  g('rf').onclick = () => showTab('dash'); bindPay(); bindQuick();
+  if (S.role === 'ADMIN') { if (S.hadPending && !d.plan_request && l.valid) toast('Payment confirmed. Your plan is active until ' + fmtDate(l.expiry) + '.'); S.hadPending = !!d.plan_request; }
+  adminReminders(l);
 }
 async function renderDash() {
   drawDash(await call('dashboard'));
   // live: refresh the figures and lists about every 30 seconds while this tab is open and the app is visible
   clearInterval(S.poll);
   S.poll = setInterval(async () => {
-    if (document.hidden || S.tab !== 'dash' || document.querySelector('.modal')) return;
+    if (document.hidden || S.tab !== 'dash' || document.querySelector('.modal:not([data-exp])')) return;
     try { const d = await call('dashboard'); if (S.tab === 'dash') { const y = window.scrollY; drawDash(d); window.scrollTo(0, y); } } catch (e) { if (e.code === 'SESSION_EXPIRED') clearInterval(S.poll); }
   }, 30000);
 }
@@ -408,7 +540,7 @@ async function renderLoc() {
       g('lres').innerHTML = `<div class="small" style="margin:6px 2px">${r.count} record(s)${r.count >= 500 ? ' (latest 500)' : ''}</div>` + r.rows.map((x, i) => `<div class="card"><b>${esc(x.name)}</b> <span class="small">${esc(x.id)} · ${fmtDate(x.date)}</span>
         <div class="row"><span>Login</span><span>${esc(x.in_time)} · ±${Math.round(x.in_acc || 0)} m</span></div>
         <div class="row"><span>Login location</span><a href="${esc(x.in_map)}" target="_blank" rel="noopener">Open map</a></div>
-        <div class="row"><span>Logout</span><span>${x.out_time ? esc(x.out_time) + ' · ±' + Math.round(x.out_acc || 0) + ' m' : '<b style="color:#b7791f">NOT LOGGED OUT</b>'}</span></div>
+        <div class="row"><span>Logout</span><span>${x.out_time ? esc(x.out_time) + (x.auto_out ? '' : ' · ±' + Math.round(x.out_acc || 0) + ' m') : '<b style="color:#b7791f">NOT LOGGED OUT</b>'}${x.auto_out ? ' <span class="chip">Auto mark-out (12 h)</span>' : ''}</span></div>
         ${x.out_map ? `<div class="row"><span>Logout location</span><a href="${esc(x.out_map)}" target="_blank" rel="noopener">Open map</a></div>` : ''}
         <div class="row"><span>Working hours</span><span>${x.hours === null ? '—' : x.hours + ' h'}</span></div>
         <div class="row"><span>Site</span><span>${esc(x.site || '—')}${x.in_dist !== null && x.in_dist !== '' ? ' · ' + x.in_dist + ' m' : ''} · ${esc(x.in_on || '')}</span></div>
@@ -476,11 +608,11 @@ async function renderCo() {
     </div>
   ${admin ? `<div class="card"><b>Subscription</b><div class="row"><span>Plan</span><span>${esc(c.plan)}</span></div><div class="row"><span>Status</span><span class="chip ${esc(l.state[0].toUpperCase() + l.state.slice(1))}">${esc(l.state)}</span></div>
     <div class="row"><span>Expiry date</span><span>${esc(c.expiry || '—')}</span></div><div class="row"><span>Days left</span><span>${l.days_left ?? '—'}</span></div><div class="row"><span>User limit</span><span>${c.employee_limit}</span></div>
-    <div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message)}</div>${payButton()}</div>
+    <div class="banner ${l.valid ? 'ok' : 'bad'}" style="margin-top:10px">${esc(l.message)}</div>${pendingBanner(c.plan_request)}${payUrl() ? '<button id="rq">Buy / renew plan</button>' : ''}</div>
     ` : ''}
   ${admin ? (c.status === 'DeletionRequested' ? `<button class="ghost" id="dc">Cancel deletion request</button>` : `<button class="ghost" id="dr" style="color:var(--red)">Delete company account and data</button>`) : ''}
   ${admin ? '<button class="ghost" id="cp">Change my password</button>' : ''}<button class="ghost" id="so">Sign out</button>${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
-  g('so').onclick = signOut; bindLegal(); bindPay(); if (admin && g('cp')) g('cp').onclick = changePasswordDialog;
+  g('so').onclick = signOut; bindLegal(); bindPay(); if (admin && g('rq')) g('rq').onclick = planDialog; if (admin && g('cp')) g('cp').onclick = changePasswordDialog;
   if (admin && g('dr')) g('dr').onclick = deleteCompanyDialog;
   if (admin && g('dc')) g('dc').onclick = (ev) => busy(ev.target, 'Please wait…', async () => { try { await call('company_delete_cancel'); renderCo(); } catch (e) { toast(e.message); } });
 }
@@ -507,10 +639,60 @@ async function showOwner() {
   $app.className = ''; setHeader('Owner'); $nav.innerHTML = '';
   try {
     const { companies, plans } = await call('owner_list'); S.cos = companies; S.plans = plans || {};
-    $app.innerHTML = `<div class="card"><b>Companies</b> <span class="small">(${companies.length})</span><button class="ghost" id="rf">Refresh</button></div>` + companies.map(c => `<div class="card" data-c="${esc(c.id)}" style="cursor:pointer"><b>${esc(c.name)}</b><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
+    let pwn = 0, rqn = 0; try { pwn = (await call('owner_pw_overview')).pending_count || 0; } catch {} try { rqn = (await call('owner_plan_overview')).pending_count || 0; } catch {}
+    $app.innerHTML = `<div class="card"><b>Companies</b> <span class="small">(${companies.length})</span><button class="ghost" id="rf">Refresh</button><button id="opl">Plan requests${rqn ? ' (' + rqn + ' waiting)' : ''}</button><button id="opw">Admin password management${pwn ? ' (' + pwn + ' request' + (pwn === 1 ? '' : 's') + ')' : ''}</button></div>` + companies.map(c => `<div class="card" data-c="${esc(c.id)}" style="cursor:pointer"><b>${esc(c.name)}</b><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
       <div class="small">${esc(c.id)} · ${esc(c.plan)} · expires ${esc(c.expiry || '—')} (${c.days_left ?? '—'} d) · limit ${c.employee_limit}</div><div class="small">${esc(c.admin_name)} · ${esc(c.mobile)} · ${esc(c.email)}</div></div>`).join('') + `<button class="ghost" id="ols">Sign out</button>`;
-    g('rf').onclick = showOwner; g('ols').onclick = signOut; $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
+    g('rf').onclick = showOwner; g('ols').onclick = signOut; g('opw').onclick = ownerPasswords; g('opl').onclick = ownerPlans; $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
   } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="ols">Sign out</button>`; g('ols').onclick = signOut; }
+}
+// ---------- owner: plan requests, payment verification, expiring plans (v3.6) ----------
+async function ownerPlans() {
+  $app.innerHTML = '<div class="small" style="text-align:center;padding:30px">Loading…</div>';
+  try {
+    const o = await call('owner_plan_overview'), inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
+    $app.innerHTML = `<div class="card"><b>Plan requests and expiry</b><div class="small">Activate a plan only after you have seen the money in your bank / UPI. Activation restores the company's access at once.</div><button class="ghost" id="pl_bk">Back</button></div>
+      <div class="card"><b>Waiting for payment check (${o.requests.length})</b>${o.requests.map(r => `<div class="hist"><b>${esc(r.company_name)}</b> <span class="small">${esc(r.company_id)}</span><br><span class="small">${esc(r.request.plan)} · ${r.request.months} month(s) · <b>${inr(r.request.amount)}</b> · ref ${esc(r.request.ref)} · asked ${fmtWhen(r.request.time)}<br>${esc(r.admin_name)} · ${esc(r.mobile)}</span>
+        <div class="grid"><button class="sm" data-act="${esc(r.company_id)}">Payment received - activate</button><button class="sm ghost" data-rej="${esc(r.company_id)}">Not received - close</button></div></div>`).join('') || '<div class="small" style="margin-top:6px">No open requests.</div>'}</div>
+      <div class="card"><b>Expiring in 7 days or expired (${o.expiring.length})</b>${o.expiring.map(r => `<div class="hist"><b>${esc(r.company_name)}</b> <span class="small">${esc(r.company_id)} · ${esc(r.plan)}</span><br><span class="small">${r.days_left < 0 ? 'Expired ' + (-r.days_left) + ' day(s) ago' : r.days_left === 0 ? 'Expires today' : 'Expires in ' + r.days_left + ' day(s)'} (${esc(r.expiry)}) · ${esc(r.admin_name)} · ${esc(r.mobile)}</span></div>`).join('') || '<div class="small" style="margin-top:6px">None.</div>'}</div>
+      <div class="card"><b>Recent plan activity</b>${o.history.slice(0, 40).map(h => `<div class="hist"><b>${esc(h.label)}</b><br><span class="small">${fmtWhen(h.time)} · ${esc(h.company_id)} · ${esc(h.detail)}</span></div>`).join('') || '<div class="small">Nothing yet.</div>'}</div>`;
+    g('pl_bk').onclick = showOwner;
+    $app.querySelectorAll('[data-act]').forEach(b => { b.onclick = () => { const r = o.requests.find(x => x.company_id === b.dataset.act); if (!confirm('Have you seen ' + inr(r.request.amount) + ' from ' + r.company_name + ' in your bank / UPI?\nActivate ' + r.request.plan + ' for ' + r.request.months + ' month(s)?')) return;
+      busy(b, 'Activating…', async () => { try { await call('owner_activate', { company_id: r.company_id, plan: r.request.plan, months: r.request.months }); ownerPlans(); } catch (e) { toast(e.message); } }); }; });
+    $app.querySelectorAll('[data-rej]').forEach(b => { b.onclick = () => { if (!confirm('Close this request as "payment not received"? The company is told by email.')) return; busy(b, 'Closing…', async () => { try { await call('owner_plan_reject', { company_id: b.dataset.rej }); ownerPlans(); } catch (e) { toast(e.message); } }); }; });
+  } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="pl_bk">Back</button>`; g('pl_bk').onclick = showOwner; }
+}
+// ---------- owner: Admin password management (v3.5) ----------
+function pwHistoryRows(list) {
+  return (list || []).map(h => `<div class="hist"><b>${esc(h.label || h.action)}</b> <span class="chip ${/^Completed/.test(h.status) ? 'Active' : ''}">${esc(h.status || '')}</span><br><span class="small">${fmtWhen(h.time)}${h.company_name ? ' · ' + esc(h.company_name) + (h.admin_name ? ' / ' + esc(h.admin_name) : '') : ''}</span></div>`).join('') || '<div class="small">No password activity yet.</div>';
+}
+async function ownerPasswords() {
+  $app.innerHTML = '<div class="small" style="text-align:center;padding:30px">Loading…</div>';
+  try {
+    const o = await call('owner_pw_overview'), pend = o.admins.filter(a => a.pending_since);
+    $app.innerHTML = `<div class="card"><b>Admin password management</b><div class="small">Set a new password for a company administrator. You never see an existing password - only the new one you set, once.</div><button class="ghost" id="pw_bk">Back</button></div>
+      <div class="card"><b>Reset requests (${pend.length})</b>${pend.map(a => `<div class="hist"><b>${esc(a.company_name)}</b> <span class="small">${esc(a.company_id)}</span><br><span class="small">${esc(a.admin_name)} · ${esc(a.mobile)} · asked ${fmtWhen(a.pending_since)}</span>
+        <div class="grid"><button class="sm" data-set="${esc(a.company_id)}">Set new password</button><button class="sm ghost" data-rej="${esc(a.company_id)}">Reject</button></div></div>`).join('') || '<div class="small" style="margin-top:6px">No pending requests.</div>'}</div>
+      <div class="card"><b>All administrators (${o.admins.length})</b>${o.admins.map(a => `<div class="hist"><b>${esc(a.admin_name)}</b> <span class="small">${esc(a.company_name)} · ${esc(a.company_id)} · ${esc(a.mobile)}</span>${a.pending_since ? ' <span class="chip">Request pending</span>' : ''}<br><span class="small">Last: ${a.last_event ? esc(a.last_event.label) + ' (' + esc(a.last_event.status) + ') ' + fmtWhen(a.last_event.time) : 'no password activity'}</span>
+        <div class="grid"><button class="sm" data-set="${esc(a.company_id)}">Set / reset password</button><button class="sm ghost" data-hist="${esc(a.company_id)}">History</button></div></div>`).join('')}</div>
+      <div class="card"><b>Recent password activity</b>${pwHistoryRows(o.history.slice(0, 50))}</div>`;
+    g('pw_bk').onclick = showOwner;
+    const find = (id) => o.admins.find(a => a.company_id === id);
+    $app.querySelectorAll('[data-set]').forEach(b => { b.onclick = () => ownerSetPassword(find(b.dataset.set)); });
+    $app.querySelectorAll('[data-hist]').forEach(b => { b.onclick = () => { const a = find(b.dataset.hist), m = modal(`<h3 style="margin:0 0 6px">${esc(a.admin_name)} <span class="small">${esc(a.company_name)}</span></h3>${pwHistoryRows(a.history)}<button class="ghost" id="hx">Close</button>`); m.querySelector('#hx').onclick = () => m.close(); }; });
+    $app.querySelectorAll('[data-rej]').forEach(b => { b.onclick = () => { if (!confirm('Reject this password reset request?')) return; busy(b, 'Rejecting…', async () => { try { await call('owner_pw_reject', { company_id: b.dataset.rej }); ownerPasswords(); } catch (e) { toast(e.message); } }); }; });
+  } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="pw_bk">Back</button>`; g('pw_bk').onclick = showOwner; }
+}
+function ownerSetPassword(a) {
+  const m = modal(`<h3 style="margin:0 0 6px">New password for ${esc(a.admin_name)}</h3><div class="small">${esc(a.company_name)} · ${esc(a.company_id)}. The old password stops working. Type a new password (6-20 letters/numbers) or leave empty to generate one.</div><div id="sp_res"></div>
+    <label>New password</label><input id="sp_pw" autocomplete="off" placeholder="Leave empty to generate"><button id="sp_go">Set new password</button><button class="ghost" id="sp_x">Close</button>`);
+  m.querySelector('#sp_x').onclick = () => { m.close(); ownerPasswords(); };
+  m.querySelector('#sp_go').onclick = (ev) => busy(ev.target, 'Saving…', async () => {
+    try {
+      const pw = m.querySelector('#sp_pw').value.trim(), r = await call('owner_reset_admin', pw ? { company_id: a.company_id, password: pw } : { company_id: a.company_id });
+      m.querySelector('#sp_res').innerHTML = `<div class="banner ok"><b>New password for ${esc(r.admin_name)}</b><div style="font-size:26px;font-weight:800;letter-spacing:2px;margin:8px 0;user-select:all">${esc(r.password)}</div><div class="small">Tell the administrator now. It is not stored anywhere and cannot be shown again. They can change it in Company tab → Change my password.</div></div>`;
+      m.querySelector('#sp_go').remove(); m.querySelector('#sp_pw').remove();
+    } catch (e) { m.querySelector('#sp_res').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+  });
 }
 function ownerForm(c) {
   const plans = S.plans || {}, inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
@@ -548,6 +730,6 @@ function ownerForm(c) {
 // ---------------- start ----------------
 (async function start() {
   const co = store.get('co'), id = store.get('uid'), pin = store.get('pin');
-  if (co && id && pin) { try { const r = await relogin(); applyLogin(r); goHome(); } catch (e) { if (e.code === 'NETWORK' || e.code === 'BAD_REPLY') return showOffline(e.message); showLogin(e.message); } }
+  if (co && id && pin) { try { const r = await relogin(); applyLogin(r); goHome(); } catch (e) { if (e.code === 'NETWORK' || e.code === 'BAD_REPLY') return showOffline(e.message); showLogin(e.message); if (isLicence(e)) expiryPopup(e); } }
   else showLogin();
 })();

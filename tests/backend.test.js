@@ -243,21 +243,21 @@ test('10 employees check in one after another: 10 distinct rows, 10 photos, no c
   assert.equal(attRows(E, cid).length, 10); assert.equal(new Set(attRows(E, cid).map(r => r[2])).size, 10); assert.equal(photosFiles(E, cid).length, 10);
 });
 
-test('monthly report: P / L / WO / MC, Sundays, multi-session hours, missed logout not counted, future days blank, scoped employees', () => {
+test('monthly report: P / L / WO, Sundays, multi-session hours, a session left open for 12+ hours is auto-marked-out (v3.5), future days blank, scoped employees', () => {
   const { E, tok, cid } = setup2(); const H = E.x.ATT_H, g = attTab(E, cid).g;
   const add = (date, id, inT, outT, status) => { const r = Array(H.length).fill(''); r[0] = 'R' + g.length; r[1] = date; r[2] = id; r[H.indexOf('IN Time')] = '09:00'; r[H.indexOf('IN Server Time')] = inT; r[H.indexOf('OUT Server Time')] = outT || ''; r[H.indexOf('Status')] = status; r[H.indexOf('IN Lat')] = 18.5; r[H.indexOf('IN Long')] = 73.8; r[H.indexOf('IN Map')] = 'https://www.google.com/maps?q=18.5,73.8'; r[H.indexOf('Photo')] = 'https://drive.google.com/file/d/FILEX123456789/view'; g.push(r); };
   add('2026-02-02', 'E001', '2026-02-02T03:30:00Z', '2026-02-02T12:00:00Z', 'CLOSED');       // 8.5 h
   add('2026-02-03', 'E001', '2026-02-03T04:00:00Z', '2026-02-03T06:00:00Z', 'CLOSED');       // 2 h
   add('2026-02-03', 'E001', '2026-02-03T07:00:00Z', '2026-02-03T10:00:00Z', 'CLOSED');       // 3 h  (second session same day)
-  add('2026-02-04', 'E001', '2026-02-04T04:00:00Z', '', 'OPEN');                              // logged in, no logout -> MC
+  add('2026-02-04', 'E001', '2026-02-04T04:00:00Z', '', 'OPEN');                              // logged in, never logged out -> since v3.5 marked out automatically after 12 h (was MC)
   add('2026-02-01', 'E002', '2026-02-01T04:00:00Z', '2026-02-01T08:00:00Z', 'CLOSED');       // worked on a Sunday -> P (yellow in Excel)
   const r = E.api({ action: 'report_month', token: tok, month: '2026-02' });
   assert.equal(r.ok, true); assert.equal(r.days, 28); assert.equal(r.dows[0], 0); assert.equal(r.employees.length, 2);
   const p1 = r.pa.find(x => x.id === 'E001'), h1 = r.hours.find(x => x.id === 'E001');
-  assert.deepEqual([p1.P, p1.MC, p1.WO, p1.L], [2, 1, 4, 21]); assert.equal(p1.codes[0], 'WO'); assert.equal(p1.codes[1], 'P'); assert.equal(p1.codes[3], 'MC'); assert.equal(p1.hours, 13.5);
-  assert.equal(h1.values[1], 8.5); assert.equal(h1.values[2], 5); assert.equal(h1.values[3], 'MC'); assert.equal(h1.total, 13.5); assert.equal(h1.days_worked, 2);
+  assert.deepEqual([p1.P, p1.MC, p1.WO, p1.L], [3, 0, 4, 21]); assert.equal(p1.codes[0], 'WO'); assert.equal(p1.codes[1], 'P'); assert.equal(p1.codes[3], 'P'); assert.equal(p1.hours, 25.5);
+  assert.equal(h1.values[1], 8.5); assert.equal(h1.values[2], 5); assert.equal(h1.values[3], 12); assert.equal(h1.total, 25.5); assert.equal(h1.days_worked, 3);
   const p2 = r.pa.find(x => x.id === 'E002'); assert.equal(p2.codes[0], 'P'); assert.equal(p2.WO, 3);
-  assert.equal(r.location.length, 5); assert.equal(r.location[0].date, '2026-02-01'); assert.equal(r.location.find(x => x.status === 'OPEN').hours, null); assert.equal(r.location[1].photo_id, 'FILEX123456789');
+  assert.equal(r.location.length, 5); assert.equal(r.location[0].date, '2026-02-01'); assert.equal(r.location.find(x => x.auto_out).hours, 12); assert.ok(!r.location.some(x => x.status === 'OPEN')); assert.equal(r.location[1].photo_id, 'FILEX123456789');
   const cur = E.x.ymd_(new Date()).slice(0, 7), rc = E.api({ action: 'report_month', token: tok, month: cur }), last = rc.days, today = +E.x.ymd_(new Date()).slice(8);
   if (today < last) assert.equal(rc.pa[0].codes[last - 1], '');                                                       // dates after today stay blank
   const leap = E.api({ action: 'report_month', token: tok, month: '2028-02' }); assert.equal(leap.days, 29);
@@ -403,4 +403,153 @@ test('v3.4 live dashboard: names of who is in / done / not marked; the v3.3 tota
   assert.equal(by('Babu Done').status, 'DONE'); assert.ok(by('Babu Done').out_time);
   assert.deepEqual(r.absent_list.map(p => p.name), ['Chetan Absent']); assert.equal(r.absent_list[0].id, d.employee.id);
   assert.ok(r.updated_at);
+});
+
+test('v3.5 auto mark-out: a session open for 12+ hours is closed at the 12 hour point with no location needed; younger ones are untouched; new check-in works afterwards', () => {
+  const { E, tok, e1, e2, cid } = setup2(), H = E.x.ATT_H, col = (n) => H.indexOf(n), hoursAgo = (h) => new Date(Date.now() - h * 3600000).toISOString();
+  const t1 = empLogin(E, cid, e1.employee.id, e1.pin).token, t2 = empLogin(E, cid, e2.employee.id, e2.pin).token;
+  assert.equal(E.api({ action: 'checkin', token: t1, ...GOOD, idem: 'a1', photo: PHOTO }).ok, true); assert.equal(E.api({ action: 'checkin', token: t2, ...GOOD, idem: 'b1', photo: PHOTO }).ok, true);
+  const g = attTab(E, cid).g; g[1][col('IN Server Time')] = hoursAgo(13); g[2][col('IN Server Time')] = hoursAgo(11);      // person 1: 13 h ago, person 2: 11 h ago
+  const inAt = new Date(g[1][col('IN Server Time')]).getTime();
+  let m = E.api({ action: 'me', token: t1 }); assert.equal(m.open_session, null);                                              // closed by the server, no GPS involved
+  assert.equal(g[1][col('Status')], 'CLOSED'); assert.equal(g[1][col('OUT Key')], 'AUTO-12H'); assert.equal(g[1][col('Duration')], '12h 00m');
+  assert.equal(new Date(g[1][col('OUT Server Time')]).getTime(), inAt + 12 * 3600000); assert.match(g[1][col('OUT Time')], /^\d\d:\d\d$/); assert.equal(g[1][col('OUT Lat')], '');
+  assert.equal(E.api({ action: 'history', token: t1 }).sessions[0].auto_out, true); assert.equal(m.last_session === null || m.last_session.auto_out === true, true);
+  assert.equal(g[2][col('Status')], 'OPEN'); assert.equal(E.api({ action: 'me', token: t2 }).open_session.status, 'OPEN');           // 11 h: still open
+  assert.equal(E.api({ action: 'checkin', token: t1, ...GOOD, idem: 'a2', photo: PHOTO }).ok, true);                                   // can check in again
+  const outAt = g[1][col('OUT Server Time')]; E.api({ action: 'me', token: t1 }); assert.equal(g[1][col('OUT Server Time')], outAt);    // idempotent: never re-stamped
+  // logout after 12+ hours with a missing / zero location still works (it is simply marked out at the 12 hour point)
+  g[2][col('IN Server Time')] = hoursAgo(14);
+  const lo = E.api({ action: 'checkout', token: t2, idem: 'b1o' }); assert.equal(lo.ok, true, JSON.stringify(lo)); assert.equal(lo.auto, true); assert.equal(g[2][col('OUT Key')], 'AUTO-12H');
+  // a normal logout inside 12 hours is unchanged
+  assert.equal(E.api({ action: 'checkout', token: t1, ...GOOD, idem: 'a2o' }).session.auto_out, false); assert.equal(g[3][col('Status')], 'CLOSED'); assert.notEqual(g[3][col('OUT Key')], 'AUTO-12H');
+  // the administrator's views close forgotten sessions too, and counts follow
+  assert.equal(E.api({ action: 'checkin', token: t2, ...GOOD, idem: 'b2', photo: PHOTO }).ok, true); g[4][col('IN Server Time')] = hoursAgo(20);
+  const d = E.api({ action: 'dashboard', token: tok }); assert.equal(d.logged_in_now, 0); assert.equal(g[4][col('OUT Key')], 'AUTO-12H');
+  const l = E.api({ action: 'att_list', token: tok, from: '2000-01-01', to: '2100-01-01' }); assert.ok(l.rows.some(x => x.auto_out === true && x.hours === 12));
+});
+test('v3.5 auto mark-out does not weaken the plan rules: an expired company still cannot check in, and the sweep never touches other companies', () => {
+  const A = setup2('a1@x.com'), E = A.E, B = register(E, 'b1@x.com'), bt = admin(E, B.cid), be = addEmp(E, bt), H = E.x.ATT_H, col = (n) => H.indexOf(n);
+  const ta = A.login1().token, tb = empLogin(E, B.cid, be.employee.id, be.pin).token;
+  E.api({ action: 'checkin', token: ta, ...GOOD, idem: 'x1', photo: PHOTO }); E.api({ action: 'checkin', token: tb, ...GOOD, idem: 'y1', photo: PHOTO });
+  const ga = attTab(E, A.cid).g, gb = attTab(E, B.cid).g; ga[1][col('IN Server Time')] = gb[1][col('IN Server Time')] = new Date(Date.now() - 13 * 3600000).toISOString();
+  E.api({ action: 'dashboard', token: A.tok }); assert.equal(ga[1][col('Status')], 'CLOSED'); assert.equal(gb[1][col('Status')], 'OPEN');       // only company A was looked at
+  E.api({ action: 'owner_update', token: ownerTok(E), company_id: A.cid, expiry: '2020-01-01' }); dropCache(E, A.cid);
+  assert.equal(E.api({ action: 'checkin', token: ta, ...GOOD, idem: 'x2', photo: PHOTO }).error, 'LICENCE_EXPIRED');
+});
+test('v3.5 admin forgot-password request -> owner overview -> owner sets a new password or rejects; every event is recorded; nothing secret is stored or returned; survives a restart', () => {
+  const E = fresh(), c = register(E, 'pw@co.com', 'Pw Co'), cid = c.cid, mobile = co_(E, cid)[3], o = ownerTok(E), at = admin(E, cid);
+  const reqAs = (m, id = cid) => E.api({ action: 'admin_forgot_request', company_id: id, mobile: m });
+  assert.equal(reqAs('9999999999').error, 'AUTH_BAD'); assert.equal(reqAs(mobile, 'NOPE1').error, 'AUTH_BAD');                              // wrong mobile / unknown company: same answer
+  for (let i = 0; i < 5; i++) reqAs('1111111111'); assert.equal(reqAs(mobile).error, 'TOO_MANY');                                              // guessing is locked
+  E.cache = {}; for (const k of Object.keys(E.cache)) delete E.cache[k];
+  const E2 = fresh(), c2 = register(E2, 'pw2@co.com', 'Pw Co 2'), m2 = co_(E2, c2.cid)[3], o2 = ownerTok(E2), q = (x) => E2.api(x);
+  let r = q({ action: 'admin_forgot_request', company_id: c2.cid, mobile: '+91 ' + m2 }); assert.equal(r.ok, true); assert.equal(r.sent, true);   // +91 / spaces are accepted like at registration
+  assert.equal(q({ action: 'admin_forgot_request', company_id: c2.cid, mobile: m2 }).already_pending, true);                                   // one open request at a time
+  const t2 = admin(E2, c2.cid); assert.equal(q({ action: 'owner_pw_overview', token: t2 }).error, 'FORBIDDEN');                                // an administrator cannot read the owner view
+  assert.equal(q({ action: 'owner_pw_overview' }).ok, false);
+  let ov = q({ action: 'owner_pw_overview', token: o2 }); assert.equal(ov.pending_count, 1); const a = ov.admins[0]; assert.equal(a.company_id, c2.cid); assert.equal(a.admin_name, 'Asha Admin'); assert.ok(a.pending_since);
+  assert.equal(a.history[0].action, 'PW_REQUEST'); assert.equal(a.history[0].status, 'Pending');
+  assert.ok(!/hash|salt|"password"/i.test(JSON.stringify(ov)));                                                                                  // nothing secret is ever returned
+  r = q({ action: 'owner_reset_admin', token: o2, company_id: c2.cid, password: 'Newer#Pass7' }); assert.equal(r.ok, true); delete E2.cache['co_' + c2.cid];
+  ov = q({ action: 'owner_pw_overview', token: o2 }); assert.equal(ov.pending_count, 0); assert.equal(ov.admins[0].history[0].action, 'ADMIN_PASSWORD_RESET'); assert.equal(ov.admins[0].history[0].status, 'Completed');
+  assert.equal(q({ action: 'login', company_id: c2.cid, id: 'ADMIN', pin: STRONG }).error, 'AUTH_BAD'); const nt = q({ action: 'login', company_id: c2.cid, id: 'ADMIN', pin: 'Newer#Pass7' }); assert.equal(nt.ok, true);
+  q({ action: 'admin_change_password', token: nt.token, old_pin: 'Bad#Guess55', new_pin: 'Third#Pass8' }); q({ action: 'admin_change_password', token: nt.token, old_pin: 'Newer#Pass7', new_pin: 'Third#Pass8' });
+  ov = q({ action: 'owner_pw_overview', token: o2 }); assert.deepEqual(ov.admins[0].history.slice(0, 2).map(h => h.action + ':' + h.status), ['PASSWORD_CHANGE:Completed', 'PASSWORD_CHANGE_FAILED:Failed - wrong current password']);
+  assert.equal(q({ action: 'admin_forgot_request', company_id: c2.cid, mobile: m2 }).sent, true);                                              // a new request after the old one was completed
+  assert.equal(q({ action: 'owner_pw_reject', token: t2, company_id: c2.cid }).error, 'FORBIDDEN');
+  assert.equal(q({ action: 'owner_pw_reject', token: o2, company_id: c2.cid }).ok, true); ov = q({ action: 'owner_pw_overview', token: o2 });
+  assert.equal(ov.pending_count, 0); assert.equal(ov.admins[0].history[0].status, 'Rejected'); assert.equal(ov.history[0].admin_name, 'Asha Admin'); assert.ok(ov.history[0].time && ov.history[0].company_name === 'Pw Co 2');
+  const audit = JSON.stringify(E2.registry.ss.getSheetByName('Audit').g); for (const secret of ['Newer#Pass7', 'Third#Pass8', STRONG, 'Bad#Guess55']) assert.ok(!audit.includes(secret), 'a password reached the log');
+  for (const k of Object.keys(E2.cache)) delete E2.cache[k];                                                                                   // "restart": caches gone, the sheets still tell the story
+  const o3 = q({ action: 'owner_login', password: 'owner-pass-1' }).token; ov = q({ action: 'owner_pw_overview', token: o3 }); assert.equal(ov.admins[0].history.length >= 5, true);
+  assert.equal(q({ action: 'owner_pw_reject', token: o3, company_id: 'NOPE1' }).error, 'NO_COMPANY');
+});
+
+// ---------------- v3.6: plan requests, owner verification, expiry reminders ----------------
+const setExpiry = (E, cid, days, status = 'Active') => { const o = ownerTok(E), d = E.x.addDays_(E.x.ymd_(new Date()), days); const r = E.api({ action: 'owner_update', token: o, company_id: cid, status, expiry: d }); assert.equal(r.ok, true, JSON.stringify(r)); delete E.cache['co_' + cid]; };
+
+test('v3.6 plan request: only the administrator can ask; one open request; owner sees it; nothing is activated by asking; owner emailed', () => {
+  const { E, c, tok, e1 } = setup2('admin@acme.com'); E.props.OWNER_EMAIL = 'owner@dev.in';
+  const mgr = addEmp(E, tok, { name: 'Mgr', role: 'Manager', mobile: '9000000055' }), mt = empLogin(E, c.cid, mgr.employee.id, mgr.pin).token, et = empLogin(E, c.cid, e1.employee.id, e1.pin).token;
+  assert.equal(E.api({ action: 'plan_request', token: et, plan: 'Growth', months: 6 }).error, 'FORBIDDEN'); assert.equal(E.api({ action: 'plan_request', token: mt, plan: 'Growth', months: 6 }).error, 'FORBIDDEN');
+  assert.equal(E.api({ action: 'plan_request', token: tok, plan: 'Nope', months: 6 }).error, 'BAD_REQUEST'); assert.equal(E.api({ action: 'plan_request', token: tok, plan: 'Growth', months: 5 }).error, 'BAD_REQUEST');
+  const before = E.api({ action: 'company_info', token: tok }), r = E.api({ action: 'plan_request', token: tok, plan: 'Growth', months: 6 });
+  assert.equal(r.ok, true); assert.match(r.request.ref, /^PR-[A-Z2-9]{6}$/); assert.equal(r.request.amount, 1600);
+  const after = E.api({ action: 'company_info', token: tok }); assert.equal(after.plan, before.plan); assert.equal(after.expiry, before.expiry); assert.equal(after.status, before.status, 'a request never changes the plan');
+  assert.equal(after.plan_request.ref, r.request.ref); assert.equal(E.api({ action: 'company_info', token: mt }).plan_request, null, 'managers do not get the request details');
+  assert.ok(E.api({ action: 'dashboard', token: tok }).plan_request); assert.equal(E.api({ action: 'plan_request', token: tok, plan: 'Starter', months: 1 }).already_pending, true);
+  assert.equal(E.mail.length, 1); assert.equal(E.mail[0].to, 'owner@dev.in'); assert.match(E.mail[0].subject, /Plan request PR-/); assert.ok(!/Secret|pin|password/i.test(E.mail[0].body));
+  const o = ownerTok(E), ov = E.api({ action: 'owner_plan_overview', token: o }); assert.equal(ov.pending_count, 1); assert.equal(ov.requests[0].request.ref, r.request.ref); assert.equal(ov.requests[0].company_id, c.cid);
+  assert.equal(E.api({ action: 'owner_plan_overview', token: tok }).error, 'FORBIDDEN');
+});
+
+test('v3.6 payment: owner activation (after checking the money) restores access with no reinstall; failed / unpaid request is closed and the plan is unchanged', () => {
+  const { E, c, tok, e1 } = setup2('admin@acme.com'); E.props.OWNER_EMAIL = 'owner@dev.in'; const o = ownerTok(E);
+  E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + c.cid]; setExpiry(E, c.cid, -3);          // plan ended 3 days ago
+  assert.equal(empLogin(E, c.cid, e1.employee.id, e1.pin).error, 'LICENCE_EXPIRED'); assert.equal(E.api({ action: 'login', company_id: c.cid, id: 'ADMIN', pin: STRONG }).ok, true, 'admin can still sign in to renew');
+  const at = admin(E, c.cid), q = E.api({ action: 'plan_request', token: at, plan: 'Growth', months: 1 }); assert.equal(q.ok, true);
+  assert.equal(empLogin(E, c.cid, e1.employee.id, e1.pin).error, 'LICENCE_EXPIRED', 'still restricted while the payment is unverified');
+  // payment not received -> owner closes the request, admin is told, nothing changes
+  E.mail.length = 0; assert.equal(E.api({ action: 'owner_plan_reject', token: o, company_id: c.cid }).ok, true);
+  assert.equal(E.api({ action: 'company_info', token: at }).plan_request, null); assert.equal(empLogin(E, c.cid, e1.employee.id, e1.pin).error, 'LICENCE_EXPIRED');
+  assert.equal(E.mail.length, 1); assert.equal(E.mail[0].to, 'admin@acme.com'); assert.match(E.mail[0].subject, /payment not received/i);
+  // pays properly this time
+  const q2 = E.api({ action: 'plan_request', token: at, plan: 'Growth', months: 1 }); assert.equal(q2.ok, true); E.mail.length = 0;
+  const act = E.api({ action: 'owner_activate', token: o, company_id: c.cid, plan: 'Growth', months: 1 }); assert.equal(act.ok, true); delete E.cache['co_' + c.cid];
+  assert.equal(E.api({ action: 'company_info', token: at }).plan_request, null); assert.equal(empLogin(E, c.cid, e1.employee.id, e1.pin).ok, true, 'access restored automatically');
+  assert.equal(E.mail.length, 1); assert.equal(E.mail[0].to, 'admin@acme.com'); assert.match(E.mail[0].subject, /payment confirmed/i);
+  const hist = E.api({ action: 'owner_plan_overview', token: o }).history.map(h => h.action); assert.ok(hist.includes('PLAN_REQUEST') && hist.includes('PLAN_REQUEST_REJECTED') && hist.includes('ACTIVATE'));
+  // existing data was kept through the expiry
+  assert.ok(E.api({ action: 'emp_list', token: admin(E, c.cid) }).employees.length >= 2);
+});
+
+test('v3.6 reminders: admin e-mailed at 7/3/1/0 days and after expiry, once each; works with mail failure and missing email; owner summary; trigger installed once', () => {
+  const E = fresh(), a = register(E, 'a@x.in'), b = register(E, ''), o = ownerTok(E); E.props.OWNER_EMAIL = 'owner@dev.in';
+  E.api({ action: 'owner_activate', token: o, company_id: a.cid, plan: 'Starter', months: 1 }); E.api({ action: 'owner_activate', token: o, company_id: b.cid, plan: 'Starter', months: 1 });
+  E.mail.length = 0; setExpiry(E, a.cid, 20); setExpiry(E, b.cid, 7); let r = E.x.notifyExpiryDaily(); assert.equal(r.reminders, 1, 'only the company at 7 days is reminded'); assert.equal(E.mail.filter(m => m.to === 'a@x.in').length, 0);
+  assert.ok(E.mail.some(m => m.to === 'owner@dev.in' && /b|Test Co/.test(m.body)), 'owner summary lists it even when the company has no email');
+  const n1 = E.mail.length; setExpiry(E, a.cid, 7); E.mail.length = 0; r = E.x.notifyExpiryDaily(); assert.equal(E.mail.filter(m => m.to === 'a@x.in').length, 1); assert.match(E.mail.find(m => m.to === 'a@x.in').subject, /expires in 7 days/);
+  E.mail.length = 0; E.x.notifyExpiryDaily(); assert.equal(E.mail.filter(m => m.to === 'a@x.in').length, 0, 'the same reminder is never sent twice');
+  for (const [d, re] of [[3, /in 3 days/], [1, /in 1 day/], [0, /expires today/], [-1, /has expired/]]) { setExpiry(E, a.cid, d, d < 0 ? 'Active' : 'Active'); E.mail.length = 0; E.x.notifyExpiryDaily(); const m = E.mail.find(x => x.to === 'a@x.in'); assert.ok(m && re.test(m.subject), 'day ' + d + ': ' + (m && m.subject)); }
+  setExpiry(E, a.cid, -2); E.mail.length = 0; E.x.notifyExpiryDaily(); assert.equal(E.mail.filter(m => m.to === 'a@x.in').length, 0, 'no reminders on random days');
+  // mail outage: no crash, not marked as sent, retried next run
+  setExpiry(E, a.cid, 1); E.mail.length = 0; E.store.mailFails = true; assert.doesNotThrow(() => E.x.notifyExpiryDaily()); E.store.mailFails = false; E.x.notifyExpiryDaily(); assert.equal(E.mail.filter(m => m.to === 'a@x.in').length, 1, 'retried after the outage');
+  // a renewal resets the reminder memory
+  E.api({ action: 'owner_activate', token: o, company_id: a.cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + a.cid]; assert.equal(E.props['ntf_' + a.cid], undefined);
+  assert.match(E.x.installTriggers(), /Daily/); E.x.installTriggers(); assert.equal(E.store.triggers.length, 1, 'one trigger only');
+});
+
+test('v3.6 isolation: another company cannot see or touch a plan request; request owner view needs the owner password', () => {
+  const E = fresh(), a = register(E, 'a@x.in'), b = register(E, 'b@x.in'), ta = admin(E, a.cid), tb = admin(E, b.cid);
+  E.api({ action: 'plan_request', token: ta, plan: 'Growth', months: 12 });
+  assert.equal(E.api({ action: 'company_info', token: tb }).plan_request, null); assert.equal(E.api({ action: 'owner_plan_reject', token: tb, company_id: a.cid }).error, 'FORBIDDEN'); assert.equal(E.api({ action: 'owner_activate', token: tb, company_id: a.cid, plan: 'Growth', months: 12 }).error, 'FORBIDDEN');
+  assert.equal(E.api({ action: 'plan_request', token: tb, plan: 'Starter', months: 1, company_id: a.cid }).request.ref !== E.api({ action: 'company_info', token: ta }).plan_request.ref, true);
+  assert.equal(E.api({ action: 'company_info', token: ta }).plan_request.plan, 'Growth', "B's request did not overwrite A's");
+});
+
+// ---------------- v3.6 security: role matrix, tampered tokens, injection ----------------
+test('v3.6 security: every action refuses the wrong role / no token / forged token; public actions are only the known ones', () => {
+  const fs = require('fs'), src = fs.readFileSync(require('path').join(__dirname, '../apps-script/Code.gs'), 'utf8'), routeSrc = src.slice(src.indexOf('function route_'), src.indexOf('function sheet_') > 0 ? src.indexOf('// ---------------- storage') : undefined);
+  const actions = [...routeSrc.matchAll(/case '([a-z_]+)':/g)].map(m => m[1]), PUBLIC = ['register_start', 'login', 'owner_login', 'admin_forgot_request', 'logout_session', 'ping', 'version'];
+  const { E, c, tok, e1 } = setup2(), et = empLogin(E, c.cid, e1.employee.id, e1.pin).token, mgr = addEmp(E, tok, { name: 'M', role: 'Manager', mobile: '9000000066' }), mt = empLogin(E, c.cid, mgr.employee.id, mgr.pin).token;
+  assert.ok(actions.length > 30, 'actions found: ' + actions.length);
+  const EMP_OK = ['me', 'history', 'checkin', 'checkout'], MGR_OK = ['dashboard', 'emp_list', 'att_list', 'report_month', 'company_info', 'history', 'photo', 'photo_get'];
+  const ownerOnly = actions.filter(a => a.startsWith('owner_') && !PUBLIC.includes(a));
+  for (const a of actions.filter(x => !PUBLIC.includes(x))) {
+    const none = E.api({ action: a }), forged = E.api({ action: a, token: 'S' + 'x'.repeat(40) });
+    assert.notEqual(none.ok, true, a + ' works without a token'); assert.notEqual(forged.ok, true, a + ' works with a forged token');
+    if (!EMP_OK.includes(a)) assert.notEqual(E.api({ action: a, token: et }).ok, true, a + ' works for an employee');
+    if (ownerOnly.includes(a)) { assert.notEqual(E.api({ action: a, token: tok }).ok, true, a + ' works for an admin'); assert.notEqual(E.api({ action: a, token: mt }).ok, true, a + ' works for a manager'); }
+    if (!MGR_OK.includes(a) && !EMP_OK.includes(a) && !ownerOnly.includes(a)) assert.notEqual(E.api({ action: a, token: mt }).ok, true, a + ' works for a manager but is admin-only');
+  }
+  assert.deepEqual(['register_start', 'login', 'owner_login'].filter(a => actions.includes(a)).length, 3);
+});
+
+test('v3.6 security: formulas / HTML in names are stored as text, an oversized photo is refused, and a staff token cannot read another company', () => {
+  const { E, c, tok } = setup2(), x = addEmp(E, tok, { name: '=HYPERLINK("http://evil","x")', mobile: '9000000077' }), sh = empTab(E, c.cid);
+  assert.equal(sh.g[sh.g.length - 1][1], '=HYPERLINK("http://evil","x")', 'kept as text, not turned into a formula');
+  const t = empLogin(E, c.cid, x.employee.id, x.pin).token; assert.equal(E.api({ action: 'checkin', token: t, ...GOOD, idem: 'big', photo: 'A'.repeat(4000001) }).error, 'PHOTO_TOO_LARGE');
+  const other = setup2('b@b.com'), ot = empLogin(other.E, other.c.cid, other.e1.employee.id, other.e1.pin).token;
+  assert.equal(E.api({ action: 'me', token: ot }).ok, false, 'a token from another deployment/company is not valid here');
 });

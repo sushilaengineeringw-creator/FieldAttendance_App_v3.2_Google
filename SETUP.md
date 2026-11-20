@@ -40,3 +40,11 @@ See `PLAY_STORE_GUIDE.md` (step by step), `play-store/LISTING.md` (texts and for
 
 ## Build notes
 The workflow needs Java 21 and Node 22 (already set in `.github/workflows/build-apk.yml`). The app targets Android 16 (API 36).
+
+
+## v3.6 notifications (one-time, about 5 minutes)
+1. Apps Script -> Project Settings -> Script properties -> add `OWNER_EMAIL` = the address that should receive plan-request alerts and the daily summary.
+2. Paste the new Code.gs, then in the editor choose the function `installTriggers` and press Run. Google asks you to allow "send email" and "manage triggers": allow. This sets a daily job (about 8 am) that e-mails administrators before expiry.
+3. Deploy -> Manage deployments -> Edit -> New version -> Deploy.
+Without steps 1-2 everything else still works; only e-mails are skipped. A company with no e-mail saved gets no e-mail but still sees the in-app reminders.
+Plans are activated only by you in the Owner screen -> "Plan requests" after you have seen the money.

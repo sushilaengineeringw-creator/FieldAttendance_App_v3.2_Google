@@ -14,10 +14,11 @@ function coerce(x) {   // what Sheets does with a value written by setValues()
   if (x.startsWith('=')) return '#NAME?';
   return x;
 }
+const bump = (log, k, n = 1) => { const o = log.ops || (log.ops = {}); o[k] = (o[k] || 0) + n; };   // operation counters (used by the performance bench)
 class Sheet {
   constructor(name, log) { this.name = name; this.g = []; this.log = log; this.maxRows = 1000; }
   _ensure(r, c) { while (this.g.length < r) this.g.push([]); for (let i = 0; i < r; i++) while (this.g[i].length < c) this.g[i].push(''); }
-  getLastRow() { let n = 0; this.g.forEach((r, i) => { if (r.some(v => v !== '' && v != null)) n = i + 1; }); return n; }
+  getLastRow() { bump(this.log, 'sheet.getLastRow'); let n = 0; this.g.forEach((r, i) => { if (r.some(v => v !== '' && v != null)) n = i + 1; }); return n; }
   getMaxRows() { return Math.max(this.maxRows, this.g.length); }
   insertRowsAfter(_, n) { this.maxRows = this.getMaxRows() + n; }
   setName(n) { this.name = n; return this; }
@@ -26,8 +27,9 @@ class Sheet {
     const s = this;
     if (r + nr - 1 > s.getMaxRows()) throw new Error('The coordinates of the range are outside the dimensions of the sheet.');
     return {
-      getValues: () => { s.log.push('getValues'); s._ensure(r + nr - 1, c + nc - 1); return Array.from({ length: nr }, (_, i) => s.g[r - 1 + i].slice(c - 1, c - 1 + nc)); },
+      getValues: () => { s.log.push('getValues'); bump(s.log, 'sheet.read'); bump(s.log, 'cells.read', nr * nc); s._ensure(r + nr - 1, c + nc - 1); return Array.from({ length: nr }, (_, i) => s.g[r - 1 + i].slice(c - 1, c - 1 + nc)); },
       setValues: (v) => {
+        bump(s.log, 'sheet.write'); bump(s.log, 'cells.written', nr * nc);
         if (v.length !== nr || v.some(row => row.length !== nc)) throw new Error('The number of rows/columns in the data does not match the range.');
         s._ensure(r + nr - 1, c + nc - 1); v.forEach((row, i) => row.forEach((x, j) => { s.g[r - 1 + i][c - 1 + j] = coerce(x); }));
       },
@@ -46,12 +48,12 @@ class Spreadsheet {
 
 function makeEnv() {
   const props = { OWNER_PASSWORD: 'owner-pass-1' }, cache = {}, log = [];
-  const store = { n: 0, filesById: {}, sheetsById: {}, failDrive: false }, registry = {}; let ssCounter = 0;
+  const store = { n: 0, filesById: {}, sheetsById: {}, failDrive: false, mail: [], triggers: [], mailFails: false }, registry = {}; let ssCounter = 0;
   const notFound = () => new Error('No item with the given ID could be found, or you do not have permission to access it.');
   const folder = (id) => ({
     getId: () => id,
     createFolder: (name) => newFolder(name, id),
-    createFile: (blob) => {
+    createFile: (blob) => { bump(log, 'drive.createFile');
       const fid = 'FILE' + String(++store.n).padStart(14, '0');
       store.filesById[fid] = { id: fid, name: blob.getName(), parents: [id], bytes: Buffer.from(blob.getBytes().map(x => (x + 256) % 256)), trashed: false, mime: blob.getContentType() };
       return file(fid);
@@ -77,17 +79,19 @@ function makeEnv() {
     console,
     SpreadsheetApp: {
       create: (title) => { const id = 'SS' + String(++ssCounter).padStart(14, '0'), ss = new Spreadsheet(id, title, log); store.sheetsById[id] = ss; if (!registry.ss) registry.ss = ss; return ss; },
-      openById: (id) => { const ss = store.sheetsById[id]; if (!ss) throw notFound(); return ss; },
-      flush: () => {},
+      openById: (id) => { bump(log, 'openById'); const ss = store.sheetsById[id]; if (!ss) throw notFound(); return ss; },
+      flush: () => { bump(log, 'flush'); },
     },
     DriveApp: {
       Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' }, Permission: { VIEW: 'VIEW' },
       getRootFolder: () => ({}), createFolder: (name) => newFolder(name, null),
-      getFolderById: (id) => { const r = store.filesById[id]; if (!r || !r.folder) throw notFound(); return folder(id); },
-      getFileById: (id) => file(id),
+      getFolderById: (id) => { bump(log, 'drive');  const r = store.filesById[id]; if (!r || !r.folder) throw notFound(); return folder(id); },
+      getFileById: (id) => { bump(log, 'drive'); return file(id); },
     },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = String(v); }, remove: (k) => { delete cache[k]; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; }, getProperties: () => Object.assign({}, props) }) },
+    MailApp: { sendEmail: (to, subject, body) => { if (store.mailFails) throw new Error('mail quota'); store.mail.push({ to, subject, body }); } },
+    ScriptApp: { getProjectTriggers: () => store.triggers.map(t => ({ getHandlerFunction: () => t })), deleteTrigger: () => { store.triggers.length = 0; }, newTrigger: (fn) => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => { store.triggers.push(fn); } }) }) }) }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => { bump(log, 'cache.get'); return cache[k] ?? null; }, put: (k, v) => { bump(log, 'cache.put'); cache[k] = String(v); }, remove: (k) => { delete cache[k]; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ getContent: () => s, setMimeType() { return this; } }) },
     Utilities: {
@@ -103,11 +107,11 @@ function makeEnv() {
       computeDigest: (_, s) => Array.from(crypto.createHash('sha256').update(s).digest()).map(b => (b << 24) >> 24),
     },
   };
-  return { env, props, cache, log, store, sheetsById: store.sheetsById, filesById: store.filesById, registry };
+  return { env, props, cache, log, store, mail: store.mail, sheetsById: store.sheetsById, filesById: store.filesById, registry };
 }
 function load() {
   const E = makeEnv(), ctx = vm.createContext(E.env);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8') + '\n;this.__x={doGet,doPost,setup,ATT_H,EMP_H,CO_H,ymd_,addDays_,addMonths_};', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8') + '\n;this.__x={doGet,doPost,setup,notifyExpiryDaily,installTriggers,ATT_H,EMP_H,CO_H,ymd_,addDays_,addMonths_};', ctx);
   const x = ctx.__x;
   const api = (body) => JSON.parse(x.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
   return Object.assign(E, { x, api, ctx });
