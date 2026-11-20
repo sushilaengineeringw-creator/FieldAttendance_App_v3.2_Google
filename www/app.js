@@ -639,10 +639,12 @@ async function showOwner() {
   $app.className = ''; setHeader('Owner'); $nav.innerHTML = '';
   try {
     const { companies, plans } = await call('owner_list'); S.cos = companies; S.plans = plans || {};
-    let pwn = 0, rqn = 0; try { pwn = (await call('owner_pw_overview')).pending_count || 0; } catch {} try { rqn = (await call('owner_plan_overview')).pending_count || 0; } catch {}
+    const pwn = 0, rqn = 0;   // v3.6.1: the two waiting-counts are loaded AFTER the list is on screen (below), so the Owner screen opens as fast as before
     $app.innerHTML = `<div class="card"><b>Companies</b> <span class="small">(${companies.length})</span><button class="ghost" id="rf">Refresh</button><button id="opl">Plan requests${rqn ? ' (' + rqn + ' waiting)' : ''}</button><button id="opw">Admin password management${pwn ? ' (' + pwn + ' request' + (pwn === 1 ? '' : 's') + ')' : ''}</button></div>` + companies.map(c => `<div class="card" data-c="${esc(c.id)}" style="cursor:pointer"><b>${esc(c.name)}</b><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
       <div class="small">${esc(c.id)} · ${esc(c.plan)} · expires ${esc(c.expiry || '—')} (${c.days_left ?? '—'} d) · limit ${c.employee_limit}</div><div class="small">${esc(c.admin_name)} · ${esc(c.mobile)} · ${esc(c.email)}</div></div>`).join('') + `<button class="ghost" id="ols">Sign out</button>`;
-    g('rf').onclick = showOwner; g('ols').onclick = signOut; g('opw').onclick = ownerPasswords; g('opl').onclick = ownerPlans; $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
+    g('rf').onclick = showOwner; g('ols').onclick = signOut; g('opw').onclick = ownerPasswords; g('opl').onclick = ownerPlans;
+    const badge = (id, label, n) => { const el = g(id); if (el && n) el.textContent = label + ' (' + n + (id === 'opl' ? ' waiting' : ' request' + (n === 1 ? '' : 's')) + ')'; };
+    call('owner_plan_overview').then(r => badge('opl', 'Plan requests', r.pending_count)).catch(() => {}); call('owner_pw_overview').then(r => badge('opw', 'Admin password management', r.pending_count)).catch(() => {}); $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
   } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="ols">Sign out</button>`; g('ols').onclick = signOut; }
 }
 // ---------- owner: plan requests, payment verification, expiring plans (v3.6) ----------
