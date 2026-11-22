@@ -563,7 +563,10 @@ async function saveWorkbook(wb, name) {
   const b64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
   const FS = plugin('Filesystem'), SH = plugin('Share');
   if (FS && SH) { const f = await FS.writeFile({ path: name, data: b64, directory: 'CACHE' }); await SH.share({ title: name, url: f.uri, dialogTitle: 'Save or share the Excel report' }); return 'shared'; }
-  const a = document.createElement('a'); a.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64; a.download = name; document.body.appendChild(a); a.click(); a.remove(); return 'downloaded';
+  const bin = atob(b64), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const file = new File([bytes], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return 'shared'; } catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; } }   // iPhone / modern browsers: share sheet -> Save to Files, Mail, WhatsApp
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); return 'downloaded';
 }
 async function makeReport(kind, filter, label, btn) {
   await busy(btn, 'Preparing…', async () => {

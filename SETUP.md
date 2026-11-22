@@ -48,3 +48,12 @@ The workflow needs Java 21 and Node 22 (already set in `.github/workflows/build-
 3. Deploy -> Manage deployments -> Edit -> New version -> Deploy.
 Without steps 1-2 everything else still works; only e-mails are skipped. A company with no e-mail saved gets no e-mail but still sees the in-app reminders.
 Plans are activated only by you in the Owner screen -> "Plan requests" after you have seen the money.
+
+
+## iPhone version (free, for your own staff)
+1. GitHub -> Actions -> **Publish iPhone web app** -> Run workflow (leave the box empty; it uses your SERVER_URL variable). Wait for the green tick.
+2. In Settings -> Pages make sure the site is served from the `docs` folder (it already is).
+3. The app is then at `https://<your-github-name>.github.io/<repo-name>/app/`. Send that link to your iPhone users.
+4. On the iPhone, open the link in **Safari** -> Share button -> **Add to Home Screen**. Open it from the new icon.
+5. First check-in: Safari asks for Location -> Allow (choose "While using the app"). Selfie opens the front camera.
+Same company ID, user ID and PIN as Android. Records go to the same sheets. iOS 15 or newer.

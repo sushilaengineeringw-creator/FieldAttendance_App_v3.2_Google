@@ -1,3 +1,8 @@
+## 3.6.1 - Owner screen faster, iPhone (browser) version
+- Owner screen opens as fast as before v3.5: the "waiting" counts for plan requests and password requests load after the company list is shown.
+- iPhone / browser version: same app code published to docs/app by the new workflow "Publish iPhone web app" (free, no Apple account; add to Home Screen from Safari). Reports are saved through the phone's share sheet.
+- Not an App Store app. Not tested on a real iPhone (see README / chat notes).
+
 ## 3.6.0 - faster reads, plan requests, expiry reminders
 - Speed (fewer Google calls per request, measured in REPORT_v3.6.md): employee home/history read the sheet once (was twice), dashboard and monthly report read about 39,000 cells (was 178,000), location list 1,500 (was 22,000), staff list is reused for 30 s, no duplicate getLastRow calls, shorter lock time on check-in. Employee screen refreshes every 2 minutes and not while the app is in the background.
 - Subscription: the renewal popup now goes to the administrator only (staff and managers see a plain banner). Administrator reminder popup 7 / 3 / 1 days before and on the last day, at most once a day. "Buy / renew plan" lets the administrator choose a plan and sends a request with a reference; payment is made outside the app; the plan is activated only after the owner has verified the money (owner screen "Plan requests"), or the request is closed as "not received". Administrator sees the pending request and a "Payment confirmed" notice.
