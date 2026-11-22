@@ -1,1 +1,44 @@
+name: Publish iPhone web app
 
+# Makes the browser / iPhone version of the app and saves it in docs/app (your GitHub Pages site serves it at .../app/).
+# Run it by hand: Actions > Publish iPhone web app > Run workflow. It does not touch the Android build.
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Apps Script /exec URL (leave empty to use the SERVER_URL repository variable)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build web app
+        env:
+          INPUT_URL: ${{ github.event.inputs.server_url }}
+          VAR_URL: ${{ vars.SERVER_URL }}
+          PRIVACY_URL: ${{ vars.PRIVACY_URL }}
+          TERMS_URL: ${{ vars.TERMS_URL }}
+          PAY_URL: ${{ vars.PAY_URL }}
+        run: |
+          URL="${INPUT_URL:-$VAR_URL}"
+          if [ -z "$URL" ]; then
+            echo "::error::No server URL. Type it into Run workflow, or create a repository VARIABLE named SERVER_URL."
+            exit 1
+          fi
+          node scripts/set-server-url.js "$URL"
+          node scripts/build-web.js
+      - name: Save docs/app in the repository
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -- www/config.js
+          git add docs/app
+          if git diff --cached --quiet; then echo "No change to publish"; else git commit -m "Publish iPhone web app" && git push; fi
