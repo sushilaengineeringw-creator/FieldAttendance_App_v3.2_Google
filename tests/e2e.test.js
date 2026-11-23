@@ -50,7 +50,7 @@ test('END-TO-END: register -> add employee -> check-in (photo+GPS) -> logout -> 
   P.click('#r_go'); await until(() => P.has('Company registered'), 'registration done'); assert.equal(P.calls.opened.length, 0, 'no browser is opened');
   const cid = /FA[A-Z0-9]{5}/.exec(P.text())[0];
   P.click('#ok'); await until(() => P.has("Today's present"), 'admin dashboard straight after registration');
-  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so');
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   // 2. admin signs in, adds an employee inside the app
   await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.has("Today's present"), 'admin dashboard');
   assert.ok(P.has('Total employees')); P.click('nav [data-t="emps"]'); await until(() => P.$('#ae'), 'employee tab'); P.click('#ae');
@@ -58,7 +58,7 @@ test('END-TO-END: register -> add employee -> check-in (photo+GPS) -> logout -> 
   P.d.querySelector('#f_type').value = 'Technician'; P.click('#fs');
   await until(() => /PIN: \d{6}/.test(P.d.querySelector('#mres') ? P.d.querySelector('#mres').textContent : ''), 'employee created');
   const pin = /PIN: (\d{6})/.exec(P.d.querySelector('#mres').textContent)[1]; assert.ok(P.d.querySelector('#mres').textContent.includes('E001'));
-  P.click('#fc'); await sleep(50); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); assert.ok(P.has('Free trial')); assert.ok(P.has('asha@sunsolar.in')); P.click('#so');
+  P.click('#fc'); await sleep(50); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); assert.ok(P.has('Free trial')); assert.ok(P.has('asha@sunsolar.in')); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   // 3. employee: login screen -> photo + GPS -> check-in
   await signIn(P, cid, 'E001', pin); await until(() => P.$('#in'), 'employee home'); assert.ok(P.has('Ravi Kumar')); assert.ok(P.has('Installation')); assert.ok(P.has('Solar Technician'));
   P.click('#in'); await until(() => P.$('#nok'), 'first-use notice'); assert.ok(P.has('does not track you in the background')); assert.equal(P.calls.photoOpts, undefined); P.click('#nok');
@@ -70,7 +70,7 @@ test('END-TO-END: register -> add employee -> check-in (photo+GPS) -> logout -> 
   assert.equal(Object.values(E.filesById).filter(f => !f.folder).length, 1);
   P.click('#ok'); await until(() => P.$('#out'), 'logout button'); P.click('#out'); await until(() => P.has('Logged out'), 'logout saved');
   assert.equal(ss.tabs.Attendance.g[1][H.indexOf('Status')], 'CLOSED'); assert.ok(ss.tabs.Attendance.g[1][H.indexOf('OUT Lat')]);
-  P.click('#ok'); await until(() => P.$('#hs'), 'home'); P.click('#hs'); await until(() => P.has('Attendance history') && P.has('ATT-'), 'history'); P.click('#bk'); await until(() => P.$('#lo'), 'home'); P.click('#lo');
+  P.click('#ok'); await until(() => P.$('#hs'), 'home'); P.click('#hs'); await until(() => P.has('Attendance history') && P.has('ATT-'), 'history'); P.click('#bk'); await until(() => P.$('#lo'), 'home'); P.click('#lo'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   // 4. admin: location & photos, photo is shown through the authorised call, Excel download
   await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('nav [data-t="loc"]'), 'admin home'); P.click('nav [data-t="loc"]');
   await until(() => P.has('Ravi Kumar') && P.$('[data-p]'), 'location list'); assert.ok(P.has('Open map')); P.click('[data-p]');
@@ -79,11 +79,11 @@ test('END-TO-END: register -> add employee -> check-in (photo+GPS) -> logout -> 
   await until(() => P.calls.files.length === 1 && P.calls.shared.length === 1, 'excel saved + shared');
   const wb = XLSX.read(Buffer.from(P.calls.files[0].data, 'base64'), { type: 'buffer', cellStyles: true }); const ym = E.x.ymd_(new Date()).slice(0, 7);
   assert.deepEqual(wb.SheetNames, ['PA_' + ym, 'Hours_' + ym, 'Location_' + ym]); assert.match(P.calls.files[0].path, /^Complete_Report_\d{4}-\d{2}_Sun_Solar/);
-  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so');
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   // 5. owner suspends the company: employee can no longer sign in, admin still can
   await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
   await until(() => P.has('Sun Solar Pvt Ltd') && P.has('Trial'), 'owner list'); P.d.querySelector('[data-c="' + cid + '"]').click();
-  await until(() => P.$('#o_st'), 'owner form'); P.d.querySelector('#o_st').value = 'Suspended'; P.click('#os'); await until(() => !P.$('.modal') && (P.d.querySelector('[data-c="' + cid + '"] .chip') || {}).textContent === 'Suspended', 'suspended shown'); P.click('#ols');
+  await until(() => P.$('#o_st'), 'owner form'); P.d.querySelector('#o_st').value = 'Suspended'; P.click('#os'); await until(() => !P.$('.modal') && (P.d.querySelector('[data-c="' + cid + '"] .chip') || {}).textContent === 'Suspended', 'suspended shown'); P.click('#ols'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   delete E.cache['co_' + cid]; await signIn(P, cid, 'E001', pin);
   await until(() => P.has('subscription is suspended'), 'employee blocked'); assert.equal(ss.tabs.Attendance.g.length, 2);
 });
@@ -94,7 +94,7 @@ test('admin and employee screens differ; manager sees team only; wrong PIN shows
   const tok = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token;
   const m = E.api({ action: 'emp_add', token: tok, name: 'Meera Mgr', role: 'Manager' }), e = E.api({ action: 'emp_add', token: tok, name: 'Eka Emp', manager: 'M001' });
   await signIn(P, cid, 'E001', '000000'); await until(() => P.has('Incorrect Company ID'), 'wrong pin message');
-  P.type('#p', e.pin); P.click('#go'); await until(() => P.$('#in'), 'employee home'); assert.ok(!P.$('nav button')); P.click('#lo');
+  P.type('#p', e.pin); P.click('#go'); await until(() => P.$('#in'), 'employee home'); assert.ok(!P.$('nav button')); P.click('#lo'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   await signIn(P, cid, 'M001', m.pin); await until(() => P.has("Today's present"), 'manager dashboard'); P.click('nav [data-t="emps"]'); await until(() => P.has('My team') && P.has('Eka Emp'), 'team');
   assert.ok(!P.$('#ae')); assert.ok(!P.has('Meera Mgr')); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'co'); assert.ok(!P.has('Subscription'));
 });
@@ -103,9 +103,10 @@ test('account deletion through the app: admin asks, password is checked, attenda
   const E = load(); E.x.setup(); const P = phone(E); P.w.alert = () => {}; P.w.prompt = (m) => { P.prompted = m; return P.promptAnswer; };
   const r = E.api({ action: 'register_start', company_name: 'Gamma Works', admin_name: 'G', mobile: '9876500002', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
   await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.$('nav [data-t="co"]'), 'admin home'); P.click('nav [data-t="co"]'); await until(() => P.$('#dr'), 'delete button');
-  P.click('#dr'); await until(() => P.$('#dgo'), 'delete dialog'); assert.ok(P.has('permanently deleted')); P.type('#dp', 'wrongwrong'); P.click('#dgo');
+  P.click('#dr'); await until(() => P.$('#dgo'), 'delete dialog'); assert.ok(P.has('permanently deleted')); P.type('#dp', 'wrongwrong'); P.click('#dgo'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   await until(() => P.has('Incorrect administrator password'), 'wrong password refused'); assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'Trial');
-  P.type('#dp', 'Secret123'); P.click('#dgo'); await until(() => P.$('#dc'), 'cancel button appears');
+  P.type('#dp', 'Secret123'); P.click('#dgo'); await until(() => P.$('#cf_no'), 'confirm window before deleting'); assert.ok(P.has('Delete company account and data?')); P.click('#cf_no'); await sleep(50);
+  assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'Trial', 'saying No deletes nothing'); P.click('#dgo'); await until(() => P.$('#cf_ok'), 'confirm again'); P.click('#cf_ok'); await until(() => P.$('#dc'), 'cancel button appears');
   assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'DeletionRequested');
   P.click('#dc'); await until(() => P.$('#dr'), 'request cancelled'); assert.equal(E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid)[12], 'Trial');
 });
@@ -129,13 +130,13 @@ test('v3.3 screens: trial text, plans button only when PAY_URL is set, reports l
   P.click('nav [data-t="loc"]'); await until(() => P.has('free trial has ended') && P.$('#pay'), 'location list locked');
   P.click('nav [data-t="dash"]'); await until(() => P.has("Today's present") && P.has('free trial has ended'), 'dashboard still opens and explains');
   // owner: Activate plan (Business, 6 months)
-  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company'); P.click('#so');
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company'); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
   await until(() => P.has('Plan Co'), 'owner list'); P.d.querySelector('[data-c="' + cid + '"]').click(); await until(() => P.$('#a_go'), 'activate form');
   assert.ok(P.has('Amount to collect: ₹150')); P.d.querySelector('#a_pl').value = 'Business'; P.d.querySelector('#a_pl').dispatchEvent(new P.w.Event('change')); P.d.querySelector('#a_mo').value = '6'; P.d.querySelector('#a_mo').dispatchEvent(new P.w.Event('change'));
   assert.ok(P.has('Amount to collect: ₹2,700') && P.has('user limit 100')); P.click('#a_go');
   await until(() => P.calls.alerts.some(a => /Business plan active until/.test(a) && a.includes('₹2,700')), 'activated');
-  await until(() => (P.d.querySelector('[data-c="' + cid + '"] .chip') || {}).textContent === 'Active' && P.has('Business') && P.has('limit 100'), 'owner list updated'); P.click('#ols');
+  await until(() => (P.d.querySelector('[data-c="' + cid + '"] .chip') || {}).textContent === 'Active' && P.has('Business') && P.has('limit 100'), 'owner list updated'); P.click('#ols'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   delete E.cache['co_' + cid]; await signIn(P, cid, 'ADMIN', 'Secret123'); await until(() => P.has("Today's present"), 'admin back in');
   P.click('nav [data-t="rep"]'); await until(() => P.$('button[data-k="all"]'), 'reports work again after payment'); P.click('button[data-k="all"]'); await until(() => P.calls.files.length === 1, 'excel downloads after payment');
 });
@@ -163,10 +164,11 @@ test('v3.4 screens: live dashboard lists who is in / done / not marked and refre
   // admin changes own password in the app
   P.click('nav [data-t="co"]'); await until(() => P.$('#cp'), 'company tab'); P.click('#cp'); await until(() => P.$('#cp_go'), 'dialog');
   P.type('#cp_o', 'Secret123'); P.type('#cp_n', 'Brand#New9'); P.type('#cp_r', 'Mismatch1'); P.click('#cp_go'); await until(() => P.has('do not match'), 'mismatch refused');
-  P.type('#cp_r', 'Brand#New9'); P.click('#cp_go'); await until(() => P.calls.alerts.some(x => /Password changed/.test(x)), 'changed'); delete E.cache['co_' + cid];
+  P.type('#cp_r', 'Brand#New9'); P.click('#cp_go'); await until(() => P.$('#cf_no'), 'confirm window before changing'); assert.ok(P.has('Change password?')); P.click('#cf_no'); await sleep(50); delete E.cache['co_' + cid];
+  assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).ok, true, 'saying No changes nothing'); P.click('#cp_go'); await until(() => P.$('#cf_ok'), 'confirm again'); P.click('#cf_ok'); await until(() => P.calls.alerts.some(x => /Password changed/.test(x)), 'changed'); delete E.cache['co_' + cid];
   assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Brand#New9' }).ok, true);
   // owner resets a forgotten admin password
-  P.click('#so'); await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
+  P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok'); await until(() => P.$('#own'), 'login'); P.click('#own'); await until(() => P.$('#op'), 'owner login'); P.type('#op', 'owner-pass-1'); P.click('#og');
   await until(() => P.has('Live Co'), 'owner list'); P.d.querySelector('[data-c="' + cid + '"]').click(); await until(() => P.$('#o_rp'), 'reset button'); P.click('#o_rp');
   await until(() => P.has('New administrator password'), 'new password shown'); const pw = P.d.querySelector('#mres .banner div').textContent.trim(); assert.match(pw, /^[a-z2-9]{8}$/);
   delete E.cache['co_' + cid]; assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Brand#New9' }).error, 'AUTH_BAD'); assert.equal(E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: pw }).ok, true);
@@ -212,7 +214,7 @@ test('v3.5 screens: plan-expired popup on sign-in, buttons on home, contact deve
   P.click('#ex_chk'); await until(() => !P.$('.modal[data-exp]') && P.has("Today's present"), 'access restored'); assert.ok(P.calls.alerts.some(a => /Access is restored/.test(a)));
   // employee opens the app after expiry: popup, no purchase button, asks the administrator
   E.api({ action: 'owner_update', token: o, company_id: cid, status: 'Active', expiry: '2020-01-01' }); delete E.cache['co_' + cid];
-  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so');
+  P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok');
   await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.has('The subscription has ended'), 'employee sees the message on the sign-in screen'); await sleep(50); assert.ok(!P.$('.modal'), 'v3.6: staff get no renewal popup: ' + (P.$('.modal') && P.$('.modal').textContent.slice(0, 120)));
   delete E.cache['co_' + cid]; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
   await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.$('#in'), 'employee works again after renewal');
@@ -246,7 +248,7 @@ test('v3.6 reminders: administrator gets one reminder popup per day before expir
   E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
   await dash[dash.length - 1].fn(); await until(() => P.calls.alerts.some(a => /Payment confirmed/.test(a)), 'confirmation notice'); assert.ok(!P.has('is waiting for payment confirmation'));
   // manager at 3 days left: no popup
-  setExp(3); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await signIn(P, cid, mg.employee.id, mg.pin); await until(() => P.has("Today's present") || P.has('Total employees'), 'manager dashboard'); await sleep(60); assert.ok(!P.$('.modal'), 'managers get no renewal popup');
+  setExp(3); P.click('nav [data-t="co"]'); await until(() => P.$('#so'), 'company tab'); P.click('#so'); await until(() => P.$('#cf_ok'), 'confirm window'); P.click('#cf_ok'); await signIn(P, cid, mg.employee.id, mg.pin); await until(() => P.has("Today's present") || P.has('Total employees'), 'manager dashboard'); await sleep(60); assert.ok(!P.$('.modal'), 'managers get no renewal popup');
   P.w.close();
 });
 
@@ -281,4 +283,17 @@ test('v3.6 bad network: offline sign-in message, slow network does not double-se
   P.click('#ok'); await until(() => P.$('#out'), 'home with logout'); mode = 'lostonce'; P.calls.alerts.length = 0; P.click('#out'); await until(() => P.calls.alerts.length > 0 || P.has('Logged out'), 'lost reply on check-out'); await sleep(30);
   mode = 'ok'; if (!P.has('Logged out')) { P.click('#out'); await until(() => P.has('Logged out'), 'retry of check-out succeeds without a false "no open session" error'); }
   assert.ok(!P.calls.alerts.some(a => /no open attendance session/i.test(a)), 'no false error'); assert.equal(rows().length, 1); assert.equal(rows()[0][H.indexOf('Status')], 'CLOSED'); P.w.close();
+});
+
+test('v3.7 screens: check-in outside the site radius is refused with the distance and nothing is recorded; sign-out asks first and "No" keeps the person signed in', async () => {
+  const E = load(); E.x.setup(); const P = phone(E);
+  const r = E.api({ action: 'register_start', company_name: 'Geo Co', admin_name: 'Asha', mobile: '9812300033', email: '', admin_pin: 'Secret123' }), cid = r.company_id;
+  const o = E.api({ action: 'owner_login', password: 'owner-pass-1' }).token; E.api({ action: 'owner_activate', token: o, company_id: cid, plan: 'Starter', months: 1 }); delete E.cache['co_' + cid];
+  const at = E.api({ action: 'login', company_id: cid, id: 'ADMIN', pin: 'Secret123' }).token, emp = E.api({ action: 'emp_add', token: at, name: 'Ravi', mobile: '9000000005', designation: 'Tech', department: 'Svc', employee_type: 'Technician', site: 'Plant 7', lat: 19.0, lng: 74.0, radius: 200 });
+  const coRow = E.registry.ss.getSheetByName('Companies').g.find(x => x[0] === cid), rows = () => E.sheetsById[coRow[9]].tabs.Attendance.g.slice(1).filter(x => x[0] !== '');
+  await signIn(P, cid, emp.employee.id, emp.pin); await until(() => P.$('#in'), 'home');
+  P.click('#in'); await until(() => P.$('#nok'), 'notice'); P.click('#nok'); await until(() => P.$('#sub'), 'photo'); await until(() => P.has('Location ready'), 'gps'); P.calls.alerts.length = 0; P.click('#sub');
+  await until(() => /m away from your assigned site.*within 200 m/.test((P.d.querySelector('#app .banner.bad') || {}).textContent || ''), 'refused with distance on screen'); assert.equal(rows().length, 0, 'nothing recorded');
+  P.click('#cn'); await until(() => P.$('#lo'), 'back home'); P.click('#lo'); await until(() => P.$('#cf_no'), 'sign-out confirm'); assert.ok(P.has('Sign out?')); P.click("#cf_no"); await sleep(50); assert.ok(P.$("#lo") || P.$("#sub"), 'still signed in after No');
+  assert.ok(!P.$('#go'), 'login screen not shown'); P.w.close();
 });

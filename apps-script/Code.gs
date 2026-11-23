@@ -405,8 +405,11 @@ function checkin_(req) {
   for (var p = 1; p < pre.length; p++) if (pre[p][ea_('IN Key')] === idem && String(pre[p][ea_('Employee ID')]) === emp.id) return { duplicate: true, session: view_(pre[p]) };
   if (findOpen_(pre, emp.id) && autoOutSweep_(co, emp.id)) pre = attRecent_(co).v;   // (memo was cleared by the write) a session open for 12+ hours is closed first, so the person can check in again
   if (findOpen_(pre, emp.id)) throw fail_('ALREADY_CHECKED_IN', 'You already have an open attendance session. Please log out first.');
+  // v3.7: when the administrator has set a site location for this person, check-in is allowed ONLY inside the site radius (nothing is saved, no photo is uploaded). No site location set = no distance rule.
+  var site = siteCheck_(emp, loc);
+  if (site.on === 'No') throw fail_('OUTSIDE_SITE', 'You are ' + site.dist + ' m away from your assigned site' + (emp.site ? ' (' + emp.site + ')' : '') + '. Attendance can be marked only within ' + Math.round(emp.radius) + ' m of the site. Please go to the site and try again.');
   // Photo goes to the company's Drive folder BEFORE the lock (slow part), so many employees can check in at once.
-  var now = new Date(), site = siteCheck_(emp, loc), ref = 'ATT-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
+  var now = new Date(), ref = 'ATT-' + Utilities.getUuid().replace(/-/g, '').slice(0, 8).toUpperCase();
   var fname = ymd_(now) + '_' + emp.id + '_' + hm_(now).replace(':', '') + '_' + ref + '.jpg';
   var file = DriveApp.getFolderById(co.photosId).createFile(Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', fname));
   var fileId = file.getId(), photoUrl = 'https://drive.google.com/file/d/' + fileId + '/view';

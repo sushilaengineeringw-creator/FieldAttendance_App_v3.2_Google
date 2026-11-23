@@ -1,6 +1,6 @@
 {
   "name": "field-attendance-app",
-  "version": "3.6.1",
+  "version": "3.7.0",
   "private": true,
   "description": "Field Engineer Attendance - Android app (Capacitor) writing to a Google Sheet via Apps Script",
   "scripts": {

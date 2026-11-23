@@ -134,10 +134,21 @@ test('site geofence: inside / outside / not configured', () => {
   const t1 = empLogin(E, cid, 'E001', e1.pin).token; let r = E.api({ action: 'checkin', token: t1, ...GOOD, idem: 'g1', photo: PHOTO });
   assert.equal(r.ok, true); assert.equal(attRows(E, cid)[0][H.indexOf('IN On site?')], 'Yes');
   E.api({ action: 'checkout', token: t1, ...GOOD, idem: 'go1' });
-  r = E.api({ action: 'checkin', token: t1, lat: 18.6, lng: 73.9, accuracy: 10, idem: 'g2', photo: PHOTO });
-  assert.match(r.warning, /m from your assigned site/); assert.equal(attRows(E, cid)[1][H.indexOf('IN On site?')], 'No');
-  const t2 = empLogin(E, cid, 'E002', addEmpPin(E, tok, 'E002')).token; E.api({ action: 'checkin', token: t2, ...GOOD, idem: 'g3', photo: PHOTO });
-  assert.equal(attRows(E, cid)[2][H.indexOf('IN On site?')], 'n/a');
+  const photosBefore = Object.keys(E.filesById).length;
+  r = E.api({ action: 'checkin', token: t1, lat: 18.6, lng: 73.9, accuracy: 10, idem: 'g2', photo: PHOTO });   // v3.7: far from the site -> refused
+  assert.equal(r.ok, false); assert.equal(r.error, 'OUTSIDE_SITE'); assert.match(r.message, /m away from your assigned site.*within 200 m/);
+  assert.equal(attRows(E, cid).length, 1, 'nothing recorded'); assert.equal(Object.keys(E.filesById).length, photosBefore, 'no photo uploaded');
+  r = E.api({ action: 'checkin', token: t1, lat: 18.5204 + 0.0027, lng: 73.8567, accuracy: 10, idem: 'g2b', photo: PHOTO });   // about 300 m north: still outside 200 m
+  assert.equal(r.error, 'OUTSIDE_SITE');
+  r = E.api({ action: 'checkin', token: t1, lat: 18.5204 + 0.0009, lng: 73.8567, accuracy: 10, idem: 'g2c', photo: PHOTO });   // about 100 m: inside
+  assert.equal(r.ok, true); assert.equal(attRows(E, cid)[1][H.indexOf('IN On site?')], 'Yes');
+  E.api({ action: 'checkout', token: t1, lat: 18.6, lng: 73.9, accuracy: 10, idem: 'go2' });   // check-out stays GPS-only: never blocks closing a session
+  assert.equal(attRows(E, cid)[1][H.indexOf('Status')], 'CLOSED'); assert.equal(attRows(E, cid)[1][H.indexOf('OUT On site?')], 'No');
+  const t2 = empLogin(E, cid, 'E002', addEmpPin(E, tok, 'E002')).token; E.api({ action: 'checkin', token: t2, lat: 18.6, lng: 73.9, accuracy: 10, idem: 'g3', photo: PHOTO });
+  assert.equal(attRows(E, cid)[2][H.indexOf('IN On site?')], 'n/a', 'no site location set = no distance rule');
+  // a retry of a check-in that WAS recorded (lost reply) is still recognised even if the person has moved away since
+  E.api({ action: 'checkin', token: t1, ...GOOD, idem: 'r1', photo: PHOTO }); const far = E.api({ action: 'checkin', token: t1, lat: 18.6, lng: 73.9, accuracy: 10, idem: 'r1', photo: PHOTO });
+  assert.equal(far.ok, true); assert.equal(far.duplicate, true);
 });
 function addEmpPin(E, tok, id) { return E.api({ action: 'emp_reset_pin', token: tok, id, pin: 'pin' + id }).pin; }
 

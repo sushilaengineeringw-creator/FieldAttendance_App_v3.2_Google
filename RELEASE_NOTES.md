@@ -1,3 +1,8 @@
+## 3.7.0 - site radius enforced, confirmation windows
+- Check-in is now REFUSED when the employee is farther from the assigned site than the site radius ("You are 420 m away from your assigned site... allowed within 200 m"). Nothing is saved and no photo is uploaded. Applies only when the administrator has set the site latitude/longitude for that person; no location set = no distance rule. Works for every installed app version (the rule is on the server). Check-out stays GPS-only and is never blocked. A retry of a check-in that was already recorded is still recognised.
+- Confirmation window ("Yes / No, go back") before: Sign out (all roles), Change my password, and Delete company account and data (asked after the password is entered). Choosing No changes nothing.
+- Admin employee form explains the radius rule.
+
 ## 3.6.1 - Owner screen faster, iPhone (browser) version
 - Owner screen opens as fast as before v3.5: the "waiting" counts for plan requests and password requests load after the company list is shown.
 - iPhone / browser version: same app code published to docs/app by the new workflow "Publish iPhone web app" (free, no Apple account; add to Home Screen from Safari). Reports are saved through the phone's share sheet.
