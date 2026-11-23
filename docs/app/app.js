@@ -9,7 +9,7 @@ window.addEventListener('unhandledrejection', (e) => showFatal(e.reason && e.rea
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
 const serverUrl = () => (store.get('server_url') || window.APP_CONFIG.SERVER_URL).trim();
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const cfgUrl = (k) => { const v = String((window.APP_CONFIG && window.APP_CONFIG[k]) || '').trim(); return /^https:\/\//.test(v) ? v : ''; };
 const cap = window.Capacitor;
 const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
@@ -188,6 +188,15 @@ function fmtWhen(t) { const d = new Date(t); return isNaN(d) ? esc(t) : esc(d.to
 function setHeader(who) { g('who').textContent = who || ''; }
 function busy(btn, text, fn) { const old = btn.textContent; btn.disabled = true; btn.textContent = text; return Promise.resolve().then(fn).finally(() => { if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = old; } }); }
 function toast(m, bad) { alert((bad ? '' : '') + m); }
+// Asks "are you sure?" in a window with two buttons; resolves true only when the person taps the confirm button.
+function askConfirm(title, message, okLabel, danger) {
+  return new Promise((done) => {
+    const m = modal(`<h3 style="margin:0${danger ? ';color:var(--red)' : ''}">${esc(title)}</h3><div style="font-size:15px;line-height:1.5;margin:8px 0 4px">${esc(message)}</div><button class="${danger ? 'red' : ''}" id="cf_ok">${esc(okLabel || 'Yes')}</button><button class="ghost" id="cf_no">No, go back</button>`);
+    m.setAttribute('data-confirm', '1'); let fin = false; const end = (v) => { if (fin) return; fin = true; m.remove(); done(v); };
+    m.querySelector('#cf_ok').onclick = () => end(true); m.querySelector('#cf_no').onclick = () => end(false); m.addEventListener('click', (e) => { if (e.target === m) end(false); });
+  });
+}
+const confirmSignOut = async () => { if (await askConfirm('Sign out?', 'You will have to sign in again to use the app.', 'Yes, sign out')) signOut(); };
 function modal(html) { const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="box">' + html + '</div>'; document.body.appendChild(m); m.close = () => m.remove(); m.addEventListener('click', (e) => { if (e.target === m) m.remove(); }); return m; }
 
 // ---------------- sign in / register ----------------
@@ -443,7 +452,7 @@ function renderEmployee() {
     <div class="small" style="margin-top:8px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
   if (o) { const tick = () => { if (g('tm')) g('tm').textContent = dur(serverNow() - new Date(o.in_ts)); }; tick(); clearInterval(S.timer); S.timer = setInterval(tick, 20000); }
   if (g('in')) g('in').onclick = () => needNotice(startCheckIn); if (g('out')) g('out').onclick = doCheckOut;
-  g('hs').onclick = showHistory; g('lo').onclick = signOut; bindQuick();
+  g('hs').onclick = showHistory; g('lo').onclick = confirmSignOut; bindQuick();
   if (l.valid) closeExpiryPopup();   // staff: the banner above says what is wrong; no popup
   if (o && serverNow() - new Date(o.in_ts) >= 12 * 3600000 && S.autoChk !== o.in_ts) { S.autoChk = o.in_ts; refreshMe(); }   // 12 h passed: the server closes the session when it is read
 }
@@ -508,7 +517,7 @@ function empForm(e, role) {
     <label>Employee type</label><select id="f_type"><option value=""></option>${(S.types || []).map(t => `<option ${e && e.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
     ${isNew && role === 'Manager' ? '' : `<label>Assigned manager</label><select id="f_manager"><option value="">— none —</option>${mgrs.map(x => `<option value="${esc(x.id)}" ${e && e.manager === x.id ? 'selected' : ''}>${esc(x.name)} (${esc(x.id)})</option>`).join('')}</select>`}
     <label>Assigned site</label><input id="f_site" value="${v('site')}"><div class="grid"><div><label>Site latitude</label><input id="f_lat" inputmode="decimal" value="${v('lat')}"></div><div><label>Site longitude</label><input id="f_lng" inputmode="decimal" value="${v('lng')}"></div></div>
-    <label>Geofence radius (m)</label><input id="f_radius" inputmode="numeric" value="${e ? esc(e.radius) : '200'}">
+    <label>Geofence radius (m)</label><input id="f_radius" inputmode="numeric" value="${e ? esc(e.radius) : '200'}"><div class="small">If site latitude and longitude are set, this person can check in only within this distance of the site. Leave the location empty for no distance rule.</div>
     ${isNew ? '<label>PIN (leave empty to generate)</label><input id="f_pin" inputmode="numeric">' : `<label>Account status</label><select id="f_status">${S.statuses.map(s => `<option ${e.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><label>Expiry date</label><input id="f_expiry" type="date" value="${v('expiry')}">`}
     <button id="fs">${isNew ? 'Create' : 'Save changes'}</button>${isNew ? '' : '<button class="ghost" id="fr">Reset PIN</button>'}<button class="ghost" id="fc">Close</button>`);
   const body = () => { const o = {}; ['name', 'mobile', 'designation', 'department', 'type', 'site', 'lat', 'lng', 'radius'].forEach(k => { o[k] = m.querySelector('#f_' + k).value.trim(); }); if (m.querySelector('#f_manager')) o.manager = m.querySelector('#f_manager').value; if (!isNew) { o.status = m.querySelector('#f_status').value; o.expiry = m.querySelector('#f_expiry').value; } else { o.pin = m.querySelector('#f_pin').value.trim(); o.role = role; } return o; };
@@ -601,6 +610,8 @@ function changePasswordDialog() {
   m.querySelector('#cp_go').onclick = (ev) => busy(ev.target, 'Saving…', async () => {
     const o = m.querySelector('#cp_o').value, n = m.querySelector('#cp_n').value, r = m.querySelector('#cp_r').value, bad = (t) => { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(t)}</div>`; };
     if (n !== r) return bad('The two new passwords do not match.');
+    if (!o || !n) return bad('Enter your current and new password.');
+    if (!(await askConfirm('Change password?', 'Your administrator password will be changed now. Use the new password the next time you sign in.', 'Yes, change it'))) return;
     try { await call('admin_change_password', { old_pin: o, new_pin: n }); if (store.get('uid') === 'ADMIN') store.set('pin', n); m.close(); toast('Password changed. Use the new password the next time you sign in.'); } catch (e) { bad(e.message); }
   });
 }
@@ -615,7 +626,7 @@ async function renderCo() {
     ` : ''}
   ${admin ? (c.status === 'DeletionRequested' ? `<button class="ghost" id="dc">Cancel deletion request</button>` : `<button class="ghost" id="dr" style="color:var(--red)">Delete company account and data</button>`) : ''}
   ${admin ? '<button class="ghost" id="cp">Change my password</button>' : ''}<button class="ghost" id="so">Sign out</button>${legalLinks()}<div class="small" style="margin-top:12px;text-align:center">App v${APP_VERSION} · ${isNative ? 'phone app' : 'browser'}</div>`;
-  g('so').onclick = signOut; bindLegal(); bindPay(); if (admin && g('rq')) g('rq').onclick = planDialog; if (admin && g('cp')) g('cp').onclick = changePasswordDialog;
+  g('so').onclick = confirmSignOut; bindLegal(); bindPay(); if (admin && g('rq')) g('rq').onclick = planDialog; if (admin && g('cp')) g('cp').onclick = changePasswordDialog;
   if (admin && g('dr')) g('dr').onclick = deleteCompanyDialog;
   if (admin && g('dc')) g('dc').onclick = (ev) => busy(ev.target, 'Please wait…', async () => { try { await call('company_delete_cancel'); renderCo(); } catch (e) { toast(e.message); } });
 }
@@ -625,6 +636,8 @@ function deleteCompanyDialog() {
     <div id="mres"></div><label>Enter your administrator password to confirm</label><input id="dp" type="password" autocomplete="current-password"><button class="red" id="dgo">Request deletion</button><button class="ghost" id="dno">Cancel</button>`);
   m.querySelector('#dno').onclick = () => m.close();
   m.querySelector('#dgo').onclick = (ev) => busy(ev.target, 'Please wait…', async () => {
+    if (!m.querySelector('#dp').value) { m.querySelector('#mres').innerHTML = '<div class="banner bad">Enter your administrator password first.</div>'; return; }
+    if (!(await askConfirm('Delete company account and data?', 'This switches off attendance for ALL your employees now, and your company records and photos will be permanently deleted. Have you downloaded the reports you need?', 'Yes, delete my company', true))) return;
     try { await call('company_delete_request', { pin: m.querySelector('#dp').value }); m.close(); toast('Deletion requested. Attendance is now switched off for your company.'); renderCo(); }
     catch (e) { m.querySelector('#mres').innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
   });
@@ -645,10 +658,10 @@ async function showOwner() {
     const pwn = 0, rqn = 0;   // v3.6.1: the two waiting-counts are loaded AFTER the list is on screen (below), so the Owner screen opens as fast as before
     $app.innerHTML = `<div class="card"><b>Companies</b> <span class="small">(${companies.length})</span><button class="ghost" id="rf">Refresh</button><button id="opl">Plan requests${rqn ? ' (' + rqn + ' waiting)' : ''}</button><button id="opw">Admin password management${pwn ? ' (' + pwn + ' request' + (pwn === 1 ? '' : 's') + ')' : ''}</button></div>` + companies.map(c => `<div class="card" data-c="${esc(c.id)}" style="cursor:pointer"><b>${esc(c.name)}</b><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
       <div class="small">${esc(c.id)} · ${esc(c.plan)} · expires ${esc(c.expiry || '—')} (${c.days_left ?? '—'} d) · limit ${c.employee_limit}</div><div class="small">${esc(c.admin_name)} · ${esc(c.mobile)} · ${esc(c.email)}</div></div>`).join('') + `<button class="ghost" id="ols">Sign out</button>`;
-    g('rf').onclick = showOwner; g('ols').onclick = signOut; g('opw').onclick = ownerPasswords; g('opl').onclick = ownerPlans;
+    g('rf').onclick = showOwner; g('ols').onclick = confirmSignOut; g('opw').onclick = ownerPasswords; g('opl').onclick = ownerPlans;
     const badge = (id, label, n) => { const el = g(id); if (el && n) el.textContent = label + ' (' + n + (id === 'opl' ? ' waiting' : ' request' + (n === 1 ? '' : 's')) + ')'; };
     call('owner_plan_overview').then(r => badge('opl', 'Plan requests', r.pending_count)).catch(() => {}); call('owner_pw_overview').then(r => badge('opw', 'Admin password management', r.pending_count)).catch(() => {}); $app.querySelectorAll('[data-c]').forEach(d => { d.onclick = () => ownerForm(S.cos.find(c => c.id === d.dataset.c)); });
-  } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="ols">Sign out</button>`; g('ols').onclick = signOut; }
+  } catch (e) { $app.innerHTML = `<div class="banner bad">${esc(e.message)}</div><button class="ghost" id="ols">Sign out</button>`; g('ols').onclick = confirmSignOut; }
 }
 // ---------- owner: plan requests, payment verification, expiring plans (v3.6) ----------
 async function ownerPlans() {
