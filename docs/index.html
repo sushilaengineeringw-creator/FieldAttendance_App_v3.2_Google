@@ -47,7 +47,7 @@ a{color:var(--pen)}
 .top nav{display:flex;gap:16px;font-weight:500}
 .top nav a{color:var(--ink);text-decoration:none}
 .top nav a:hover{text-decoration:underline}
-@media(max-width:520px){.top nav a[href="#faq"]{display:none}}
+@media(max-width:520px){.top nav{gap:12px;font-size:15px}.top nav a[href="#faq"],.top nav a[href="about.html"],.top nav a[data-wa]{display:none}}
 
 /* hero */
 .hero{display:grid;gap:36px;padding:16px 0 56px}
@@ -162,7 +162,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px}
 <div class="wrap">
   <header class="top">
     <a class="brand" href="#top"><img src="icon.png" alt="" width="34" height="34">Field Attendance</a>
-    <nav aria-label="Main"><a href="#plans">Plans</a><a href="#faq">Questions</a><a data-wa="Hello, I have a question about Field Attendance." href="#">WhatsApp</a></nav>
+    <nav aria-label="Main"><a href="#plans">Plans</a><a href="user-guide.html">User guide</a><a href="about.html">Developer</a><a href="#faq">Questions</a><a data-wa="Hello, I have a question about Field Attendance." href="#">WhatsApp</a></nav>
   </header>
 
   <main id="top">
@@ -302,7 +302,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px}
   <div class="wrap">
     <p>Field Attendance is made by Sushila Engineering Works, Pimprala, Plot No 17, Veer Savarkar Nagar, Jalgaon, Maharashtra, India.</p>
     <p style="margin-top:6px"><a id="mail" href="#">Email us</a></p>
-    <div class="links"><a href="privacy-policy.html">Privacy Policy</a><a href="terms.html">Terms of Use</a><a href="delete-account.html">Delete your account</a></div>
+    <div class="links"><a href="user-guide.html">User guide</a><a href="plans.html">Plan details</a><a href="about.html">Developer details</a><a href="privacy-policy.html">Privacy Policy</a><a href="terms.html">Terms of Use</a><a href="refund-policy.html">Refund policy</a><a href="delete-account.html">Delete your account</a></div>
     <p style="margin-top:14px" class="fine">&copy; <span id="yr"></span> Sushila Engineering Works</p>
   </div>
 </footer>
@@ -318,7 +318,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px}
 const CFG = {
   UPI_ID: "gunjanstayade17-1@oksbi",          // your UPI ID, e.g. 9284358304@okbank
   UPI_NAME: "Sushila Engineering Works",     // name shown in the customer's UPI app
-  WHATSAPP: "9284358304",                  // country code + number, no + or spaces
+  WHATSAPP: "919284358304",                  // country code + number, no + or spaces
   EMAIL: "sales.sushilaengineering@gmail.com",
   // price = rupees for 1 / 6 / 12 months, exactly as you want to charge. These must match the prices in the app's Owner screen.
   PLANS: [
